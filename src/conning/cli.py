@@ -235,7 +235,16 @@ def _help_markdown(parser: argparse.ArgumentParser) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
+    argv = list(sys.argv[1:] if argv is None else argv)
+    rest = None
+    if "--" in argv:  # split here: Python 3.11's argparse mishandles "--" before a subcommand's positionals
+        cut = argv.index("--")
+        argv, rest = argv[:cut], argv[cut + 1 :]
     args = parser.parse_args(argv)
+    if rest is not None:
+        if getattr(args, "command", None) != "run":
+            parser.error("'--' is only used with conn run")
+        args.argv = [*args.argv, *rest]
     if not getattr(args, "func", None):
         parser.print_help()
         return 0

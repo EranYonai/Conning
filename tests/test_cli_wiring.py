@@ -41,6 +41,13 @@ def test_agent_commands_reach_the_engine(fake, capsys):
     assert "transfer ok" in capsys.readouterr().out
 
 
+def test_double_dash_is_only_for_run(fake):
+    with pytest.raises(SystemExit):
+        cli.main(["targets", "--", "x"])
+    assert cli.main(["run", "lab", "uname", "--", "-a", "--", "b"]) == 0
+    assert fake.calls[-1][2]["argv"] == ["uname", "-a", "--", "b"]
+
+
 def test_errors_exit_nonzero(fake, capsys):
     assert cli.main(["run", "lab"]) == 1
     assert "give the command after --" in capsys.readouterr().out

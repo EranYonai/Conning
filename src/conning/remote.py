@@ -83,7 +83,7 @@ def posix_read_file(path: str, range_: str | None) -> str:
     if range_.startswith("-"):
         return f"tail -n {int(range_[1:])} -- {q}\n"
     start, _, end = range_.partition("-")
-    return f"sed -n '{int(start)},{int(end) if end else '$'}p' -- {q}\n"
+    return f"sed -n '{int(start)},{int(end) if end else '$'}p' < {q}\n"  # BSD sed rejects --
 
 
 def posix_sha256(path: str) -> str:

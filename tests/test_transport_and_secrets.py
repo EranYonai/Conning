@@ -149,9 +149,9 @@ def test_copy_uses_scp_with_generated_config(connected, monkeypatch):
     monkeypatch.setattr(transport.subprocess, "run", fake_run)
     tr = transport.SSHTransport()
     assert tr.copy(target(), Path("/l/f"), "/r/f", upload=True) == (0, b"")
-    assert seen[-1] == ["/usr/bin/scp", "-F", "/cfg/lab.conf", "-r", "-q", "/l/f", f"{ssh.ALIAS}:/r/f"]
+    assert seen[-1] == ["/usr/bin/scp", "-F", "/cfg/lab.conf", "-r", "-q", str(Path("/l/f")), f"{ssh.ALIAS}:/r/f"]
     tr.copy(target(), Path("/l/f"), "/r/f", upload=False)
-    assert seen[-1][-2:] == [f"{ssh.ALIAS}:/r/f", "/l/f"]
+    assert seen[-1][-2:] == [f"{ssh.ALIAS}:/r/f", str(Path("/l/f"))]
 
 
 def test_copy_needs_scp(monkeypatch):

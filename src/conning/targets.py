@@ -4,6 +4,8 @@ Loading is fail-closed: an unknown key, a bad mode or a malformed allow rule is 
 not a warning, so a typo can never silently widen what the agent may do.
 """
 
+import json
+import os
 import re
 import tomllib
 from dataclasses import dataclass, field
@@ -123,7 +125,7 @@ def select(targets: dict[str, Target], selector: str | None) -> list[Target]:
     return [targets[n] for n in (s.strip() for s in selector.split(",")) if n in targets]
 
 
-def listing(targets: list[Target]) -> str:
+def listing(targets: list[Target], reach: dict[str, str] | None = None) -> str:
     """One line per target. Never prints a host, a user or a secret reference."""
     if not targets:
         return "no targets (add one with: conn add <name>)"
@@ -132,5 +134,45 @@ def listing(targets: list[Target]) -> str:
     for t in targets:
         mode = "pending" if t.status == "pending" else t.mode
         tags = f"tags={','.join(t.tags)}" if t.tags else "tags=-"
-        lines.append(f"{t.name:<{width}}  {t.os:<7}  {t.shell:<4}  {tags}  mode={mode}")
+        line = f"{t.name:<{width}}  {t.os:<7}  {t.shell:<4}  {tags}  mode={mode}"
+        lines.append(f"{line}  reach={reach[t.name]}" if reach and t.name in reach else line)
     return "\n".join(lines)
+
+
+def _toml_value(value: object) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, str):
+        return json.dumps(value, ensure_ascii=False)
+    if isinstance(value, (list, tuple)):
+        return "[" + ", ".join(_toml_value(v) for v in value) + "]"
+    if isinstance(value, dict):
+        return "{ " + ", ".join(f"{k} = {_toml_value(v)}" for k, v in value.items()) + " }"
+    raise TypeError(f"cannot write {type(value).__name__} to TOML")
+
+
+def dump_targets(targets: dict[str, Target]) -> str:
+    """Serialize targets back to TOML, leaving out fields that hold their default."""
+    defaults = Target(name="", host="", user="")
+    out = ["# Conning targets. Safe to read: this file holds no secrets, only references to them.\n"]
+    for t in targets.values():
+        out.append(f"[{t.name}]")
+        for key in ("host", "port", "user", "auth", "secret", "key", "hostkey", "os", "shell", "mode", "status"):
+            value = getattr(t, key)
+            if value is not None and (key in ("host", "user") or value != getattr(defaults, key)):
+                out.append(f"{key} = {_toml_value(value)}")
+        for key in ("tags", "allow", "inject"):
+            value = getattr(t, key)
+            if value:
+                out.append(f"{key} = {_toml_value(value)}")
+        out.append("")
+    return "\n".join(out)
+
+
+def save_targets(path: Path, targets: dict[str, Target]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(dump_targets(targets), encoding="utf-8")
+    os.replace(tmp, path)

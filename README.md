@@ -4,9 +4,10 @@
 your own laptop. Conning holds the keys to your lab VMs and gives the agent four lean tools to run
 commands and move files there. The agent never sees a password, and you approve anything risky.
 
-> **Status: pre-alpha scaffold (v0.0.1).** The package layout, CLI surface, MCP server with its four
-> tools, the target file, the output cap and the allowlist rules are in place and tested. Running
-> commands over SSH lands in M1. See [docs/design.md](docs/design.md) for every decision so far.
+> **Status: pre-alpha (M1).** Running commands, long jobs, remote file reads and transfers work over
+> OpenSSH, with pinned host keys, password or key auth, approvals and leases. Windows targets run
+> synchronously for now. `conn watch`, `doctor` and `mcp install` come in M2. See
+> [docs/design.md](docs/design.md) for every decision so far.
 
 ## Why
 
@@ -58,38 +59,39 @@ in sync with the code.
 conn targets [--check] [filter]
     List targets: name, OS, shell, tags, mode. Never hosts or secrets.
 
-conn run [--wait WAIT] [--timeout TIMEOUT] [--cwd CWD] [--max-bytes MAX_BYTES]
-                [--grep GREP] [--json]
-                target ...
+conn run [--wait WAIT] [--timeout TIMEOUT] [--cwd CWD] [--shell]
+                [--max-bytes MAX_BYTES] [--grep GREP]
+                target [argv ...]
     Run a command on one target, a list, or tag:<tag>. Exit code first.
 
 conn read [--wait WAIT] [--range RANGE] [--grep GREP] [--signal {INT,TERM,KILL}]
-                 [--max-bytes MAX_BYTES] [--json]
+                 [--max-bytes MAX_BYTES]
                  id
-    Page a job (new lines since last read), a saved output, or a remote file.
+    Page a job (new lines only), a saved output, an approval, or a remote file.
 
 conn transfer source dest
     Copy files: local:<path> to <target>:<path>, or back. sha256 checked.
 
 conn add [--host HOST] [--user USER] [--port PORT] [--auth {ssh-agent,key,password}]
-                [--secret SECRET] [--mode {observe,ask,lease}] [--tag TAG] [--retry]
+                [--secret SECRET] [--key KEY] [--os {linux,windows,darwin}]
+                [--mode {observe,ask,lease}] [--tag TAG] [--retry]
                 name
-    Add a target (an agent-added target stays pending until you approve it).
+    Add a target. Without a terminal it is saved as pending until a human approves it.
 
-conn approve name
-    Approve a pending target: shows host, fingerprint and secret source first.
+conn approve [--always] what
+    Human only: make a pending target live, or allow a pending command a:<id>.
 
 conn import [--match MATCH]
-    Import hosts from ~/.ssh/config (forwarding and unsafe options are dropped).
+    Import hosts from ~/.ssh/config as pending targets (unsafe options dropped).
 
 conn rm name
-    Remove a target.
+    Remove a target and its pinned host key.
 
 conn test name
     Probe a target: reachability, OS, shell, pinned host key.
 
 conn lease [--minutes MINUTES] name
-    Grant a target full shell for a time box (default 15m, max 60m).
+    Human only: give a target a full shell for a time box (1-60 minutes).
 
 conn watch
     Live control room: every command on every target, and approval prompts.
@@ -108,6 +110,10 @@ conn help [--markdown]
 A target you add with `conn add` from an agent session is saved as **pending**. It does nothing until
 the human runs `conn approve <name>`, which shows the host, the pinned host-key fingerprint and where
 the secret comes from.
+
+A command outside a target's allowlist returns `status=pending_approval id=a:<id>`. The human answers
+with `conn approve a:<id>` (allow once, always allow its first two words, or deny), and the agent picks
+up the result with `read a:<id>`.
 
 ## Safety model
 
@@ -128,8 +134,8 @@ the secret comes from.
 
 ```sh
 uv sync
-uv run pytest
-uv run ruff check
+uv run pytest --cov=conning      # CI requires 95% coverage on Linux
+uv run ruff check && uv run ruff format --check
 ```
 
 After changing the CLI, refresh the README block with `uv run conn help --markdown`.

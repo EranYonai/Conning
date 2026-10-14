@@ -82,6 +82,10 @@ call only when it returns, so the agent gets progress by polling `read`.
 | D21 | Python, installed with `uv tool install conning` | Same stack as before; official MCP SDK | locked |
 | D22 | Public repo, github.com/EranYonai/Conning, Apache-2.0 | Patent grant suits security tooling | locked |
 | D23 | PyPI package `conning`, released from CI via Trusted Publishing on tag; `uvx conning mcp` | No stored tokens; one-line MCP setup | locked |
+| D24 | POSIX jobs run detached on the target (`$HOME/.conning/jobs`), in their own process group, polled by byte offset | A dropped SSH link never kills a test run; signals reach the whole tree | locked |
+| D25 | Windows targets run synchronously in M1 (PowerShell `-EncodedCommand`) | Ship Linux jobs first; detached Windows jobs later | proposed |
+| D26 | Approvals in M1 are answered at a terminal with `conn approve a:<id>`; one approval covers a whole fan-out | Works today without elicitation; M2 adds `conn watch` and prompts | locked |
+| D27 | Unit tests run Conning's real remote scripts with the local `sh` behind a fake transport; CI gates coverage at 95% | Tests the job logic itself without a server | locked |
 
 ## Ideas adopted from prior art
 
@@ -101,12 +105,13 @@ call only when it returns, so the agent gets progress by polling `read`.
 
 ## Milestones
 
-- **M0 (this scaffold):** package, CLI surface, MCP server with four tools, target file, output cap,
+- **M0 (done):** package, CLI surface, MCP server with four tools, target file, output cap,
   allowlist rules, CI and release workflow.
-- **M1:** OpenSSH connector (generated config, pinning, askpass), `run`/`read`/`transfer`, job table,
-  `add`/`approve`/`import`/`test`, keychain and `op://` resolution, redaction.
-- **M2:** approvals (MCP elicitation, `conn watch`, OS notification), leases, audit log, `doctor`,
-  `mcp install` with permission rules.
+- **M1 (done):** OpenSSH connector (generated config, pinning, askpass), `run`/`read`/`transfer`, job
+  table, `add`/`approve`/`import`/`test`/`rm`/`lease`, keychain, `op://` and `env:` resolution,
+  redaction, approvals by `conn approve a:<id>`.
+- **M2:** approvals in the agent client (MCP elicitation, `conn watch`, OS notification), audit log,
+  `doctor`, `mcp install` with permission rules, detached jobs on Windows.
 - **Later:** WinRM connector, short-lived SSH certificates, per-target prepare recipes, MCP Registry listing.
 
 ## Open questions

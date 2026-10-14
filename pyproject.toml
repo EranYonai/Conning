@@ -8,6 +8,7 @@ license-files = ["LICENSE"]
 authors = [{ name = "Eran Yonai" }]
 requires-python = ">=3.11"
 dependencies = [
+    "keyring>=25.7.0",
     "mcp>=2.3,<3",
 ]
 keywords = ["mcp", "ssh", "agents", "remote-execution", "testing", "vault"]
@@ -30,7 +31,11 @@ conn = "conning.cli:main"
 conning = "conning.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.6"]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.6",
+]
 
 [build-system]
 requires = ["hatchling>=1.26"]

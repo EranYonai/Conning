@@ -4,7 +4,7 @@ from conning.targets import TargetFileError, listing, load_targets, select
 
 GOOD = """
 [lab-lin1]
-host = "10.0.0.5"
+host = "192.0.2.5"
 user = "root"
 auth = "password"
 secret = "keychain:lab/lin1"
@@ -31,7 +31,7 @@ def test_loads_and_lists_without_secrets(tmp_path):
     assert targets["lab-win1"].shell == "pwsh"
     assert targets["lab-lin1"].mode == "ask"  # D8: new lab targets start in ask
     out = listing(list(targets.values()))
-    assert "10.0.0.5" not in out and "root" not in out and "keychain" not in out
+    assert "192.0.2.5" not in out and "root" not in out and "keychain" not in out
     assert "mode=pending" in out
 
 

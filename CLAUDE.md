@@ -18,7 +18,7 @@ changing behavior; every decision there has a number (D1...) and a status.
 
 ```sh
 uv sync
-uv run pytest
+uv run pytest --cov=conning   # keep coverage at 95%+; mock SSH with the fake transport in tests/conftest.py
 uv run ruff check && uv run ruff format --check
 uv run conn help --markdown   # paste into README.md between the conn-help markers after CLI changes
 ```

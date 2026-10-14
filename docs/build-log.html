@@ -143,7 +143,7 @@ footer{margin-top:5rem;border-top:1px solid var(--rule);padding-block:24px 48px;
       <h1 style="margin-top:14px">You have<br>the <span>conn</span></h1>
       <p class="dek">Your agent stays on your laptop. Conning holds the keys to your test machines and lets the agent work there.</p>
       <p class="sub">An open-source MCP server and CLI. The agent gets four lean tools to run commands and move files on remote targets. It never sees a password, and you approve anything risky.</p>
-      <div class="stats"><span><b>4</b>agent tools</span><span><b>0</b>secrets in context</span><span><b>5</b>sub-agent voices</span><span><b>2</b>debate rounds</span></div>
+      <div class="stats"><span><b>4</b>agent tools</span><span><b>0</b>secrets in context</span><span><b>5</b>sub-agent voices</span><span><b>2</b>debate rounds</span><span><b>138</b>unit tests</span></div>
     </div>
     <svg class="scope" viewBox="0 0 360 360" role="img" aria-label="A periscope reticle with three targets on it, two live and one in observe mode">
       <circle cx="180" cy="180" r="170"/><circle cx="180" cy="180" r="120"/><circle cx="180" cy="180" r="70"/>
@@ -160,7 +160,7 @@ footer{margin-top:5rem;border-top:1px solid var(--rule);padding-block:24px 48px;
 <main class="gutter">
 <section id="story" class="col">
   <h2>The story so far</h2>
-  <p class="label">Seven short chapters. The dated entries are in the <a href="#log">log</a>.</p>
+  <p class="label">Eight short chapters. The dated entries are in the <a href="#log">log</a>.</p>
 
   <div class="chapter"><div class="n">1</div><div class="body">
     <h3>The harness was in the wrong place</h3>
@@ -210,8 +210,31 @@ exit=0  lab-lin1  dur=21.4s  <span class="d">(identical output collapsed)</span>
   </div></div>
 
   <div class="chapter"><div class="n">7</div><div class="body">
+    <h3>First contact</h3>
+    <p>M1 is where Conning started touching machines. It still shells out to plain OpenSSH, but never through your <code>~/.ssh/config</code>. Each target gets a generated config: the host key pinned under its own alias, strict checking, every kind of forwarding off, and one reused connection so a burst of commands costs one handshake. A password never appears on a command line. ssh asks a tiny helper for it, and the helper reads it from the ssh process's environment.</p>
+    <p>The hard part was long jobs. A test run can outlive an SSH connection, so a command doesn't run inside the session. It runs detached on the target, in its own process group, writing to a file under <code>~/.conning/jobs</code>. The agent's <code>read</code> asks for bytes from an offset, so it only ever sees new lines. A signal reaches the whole process tree. Old images without <code>setsid</code> or <code>timeout</code> still work, with less protection. The first version had a bug: <code>TERM</code> killed the wrapper before it could record the exit code. The fix keeps the wrapper alive and signals only the command's group.</p>
+    <div class="term" role="img" aria-label="A sample agent session: an approval, then a streamed job"><span class="d"># the agent asks for something outside the allowlist</span>
+<span class="a">run</span>(target="lab-lin1", argv=["pytest","-x","tests/smoke"], wait=0)
+status=pending_approval id=a:7c1e  <span class="d">(human runs: conn approve a:7c1e)</span>
+
+<span class="d"># you, in a terminal</span>
+$ conn approve a:7c1e
+a:7c1e on lab-lin1
+  pytest -x tests/smoke
+[a]llow once, [e] always allow 'pytest tests/smoke', [d]eny: <span class="a">e</span>
+
+<span class="d"># the agent polls, and only sees new lines</span>
+<span class="a">read</span>(id="a:7c1e", wait=20)
+approved a:7c1e: started lab-lin1=j:3fa9
+status=running job=j:3fa9 dur=20.0s +41 lines
+<span class="a">read</span>(id="j:3fa9", wait=60)
+<span class="ok">exit=0</span> dur=71.4s out=o:3fa9</div>
+    <p>Eran's rule for this milestone was blunt: mock as much as possible and keep coverage above 95%. The trick that made it honest is a fake transport that runs Conning's real remote scripts with the local <code>sh</code> against a throwaway home directory. The job logic gets tested for real without a server. Getting to 100% found four bugs a happy-path demo would have missed. A failed fan-out start was listed as a job handle. An agent could save a password target with no secret, which then broke the whole target file. Typing "e" on a command that has no rule to remember approved it anyway. A single giant line of output, such as minified JSON, crashed the output cap.</p>
+  </div></div>
+
+  <div class="chapter"><div class="n">8</div><div class="body">
     <h3>What's next</h3>
-    <p>Finish the walkthrough: the four tools, the safety model, Windows and transport, then scope and language. After that, a repo and a scaffold. The goal hasn't moved: your own agent, on your own machine, working on a lab VM as easily as on localhost, without ever holding its keys.</p>
+    <p>M2 brings the approval to where you already are: a prompt in the agent client, a live <code>conn watch</code> view, and a desktop notification. It also adds the audit log, <code>conn doctor</code>, <code>conn mcp install</code> with rules that stop the agent going around Conning with raw <code>ssh</code>, and detached jobs on Windows. The goal hasn't moved: your own agent, on your own machine, working on a lab VM as easily as on localhost, without ever holding its keys.</p>
   </div></div>
 </section>
 
@@ -222,9 +245,9 @@ exit=0  lab-lin1  dur=21.4s  <span class="d">(identical output collapsed)</span>
     <thead><tr><th>Tool</th><th>Signature</th><th>Behavior</th></tr></thead>
     <tbody>
       <tr><td class="id">targets</td><td><code>targets(filter?, check?)</code></td><td>One line per target: name, OS, shell, tags, mode, last seen. Never a host, a user or a secret.</td></tr>
-      <tr><td class="id">run</td><td><code>run(target, cmd|argv, cwd?, env?, wait=30, head=20, tail=60, grep?)</code></td><td>One target, a list, or <code>tag:x</code>. Exit code first, output capped at 8 KB. Past <code>wait</code> it returns a job handle and the command keeps running.</td></tr>
-      <tr><td class="id">read</td><td><code>read(id, wait?, range?, grep?, signal?)</code></td><td>Long-polls a job for new lines, slices saved output, or pages a remote file.</td></tr>
-      <tr><td class="id">transfer</td><td><code>transfer(target, from, to)</code></td><td>Copies files between your machine and a target over the open connection and checks the sha256. File contents never enter the model's context.</td></tr>
+      <tr><td class="id">run</td><td><code>run(target, cmd|argv, cwd?, wait=30, timeout=3600, max_bytes=8192, grep?)</code></td><td>One target, a list, or <code>tag:x</code>. Exit code first, output capped at 8 KB. Past <code>wait</code> it returns a job handle and the command keeps running.</td></tr>
+      <tr><td class="id">read</td><td><code>read(id, wait?, range?, grep?, signal?)</code></td><td>Long-polls a job for new lines (<code>j:</code>), slices saved output (<code>o:</code>), checks an approval (<code>a:</code>), or pages a remote file (<code>target:path</code>).</td></tr>
+      <tr><td class="id">transfer</td><td><code>transfer(source, dest)</code></td><td>Copies files between your machine and a target over the open connection and checks the sha256. File contents never enter the model's context.</td></tr>
     </tbody>
   </table></div>
 </section>
@@ -234,6 +257,10 @@ exit=0  lab-lin1  dur=21.4s  <span class="d">(identical output collapsed)</span>
   <div class="tablewrap"><table>
     <thead><tr><th>#</th><th>Decision</th><th>Why</th><th>Status</th></tr></thead>
     <tbody>
+      <tr><td class="id">D27</td><td>Unit tests run Conning's real remote scripts with the local <code>sh</code> behind a fake transport; CI gates coverage at 95%</td><td>Eran: mock with unit tests as much as possible, 95%+ coverage</td><td><span class="st locked">locked</span></td></tr>
+      <tr><td class="id">D26</td><td>In M1 you answer approvals at a terminal with <code>conn approve a:&lt;id&gt;</code>; one approval covers a whole fan-out</td><td>Works today; M2 brings the prompt to the agent client</td><td><span class="st locked">locked</span></td></tr>
+      <tr><td class="id">D25</td><td>Windows targets run synchronously in M1, through PowerShell <code>-EncodedCommand</code></td><td>Ship Linux jobs first; detached Windows jobs later</td><td><span class="st prop">proposed</span></td></tr>
+      <tr><td class="id">D24</td><td>POSIX jobs run detached on the target, in their own process group, read by byte offset</td><td>A dropped SSH link never kills a test run; signals reach the whole tree</td><td><span class="st locked">locked</span></td></tr>
       <tr><td class="id">D1</td><td>The agent stays on the dev machine; Conning dials out to targets</td><td>No LLM tunnel, no handoff zip, no LLM keys on VMs</td><td><span class="st locked">locked</span></td></tr>
       <tr><td class="id">D2</td><td>One core with two front ends: an MCP server and the <code>conn</code> CLI, giving identical output</td><td>Approvals and jobs need a long-lived process; the CLI serves humans and scripts</td><td><span class="st locked">locked</span></td></tr>
       <tr><td class="id">D3</td><td>Agents with only bash may use the CLI directly</td><td>Eran, Q1: works for any harness, including Cortest's</td><td><span class="st locked">locked</span></td></tr>
@@ -278,6 +305,9 @@ exit=0  lab-lin1  dur=21.4s  <span class="d">(identical output collapsed)</span>
   <p class="label">Dated entries, newest first.</p>
 
   <!-- NEW ENTRIES go directly below this line -->
+  <details open><summary>#5 · M1: commands over SSH <span>2026-10-14</span></summary><div class="entry">
+    <p>The four tools now work against real machines. <code>run</code> starts a detached job and returns the exit code first, or a job handle once <code>wait</code> runs out. <code>read</code> streams new lines, sends signals, pages saved output and reads remote files. <code>transfer</code> copies with scp and checks the sha256. On the human side, <code>conn add</code>, <code>approve</code>, <code>import</code>, <code>test</code>, <code>rm</code> and <code>lease</code> work, and host keys are pinned when you approve a target. Secrets are redacted from all output, along with their base64, URL-encoded and hex forms. It was checked end to end against a local sshd (D24 to D27). Eran then asked for unit tests with mocks and 95%+ coverage. There are now 138 tests at 100% coverage, and CI fails below 95%. Writing them found four bugs, all fixed.</p>
+  </div></details>
   <details open><summary>#4 · The repo and the M0 scaffold <span>2026-10-14</span></summary><div class="entry">
     <p>The repo landed on GitHub, not GitLab: <a href="https://github.com/EranYonai/Conning">EranYonai/Conning</a>, Apache-2.0 for its patent grant. The first draft PR scaffolds v0.0.1. It adds the <code>conn</code> CLI, an MCP server with exactly four tools, a fail-closed target file, the output cap, and two-word allowlist rules. Tests keep the README's CLI help in sync with the code, and another caps the size of the tool schemas, about 3 KB today. CI runs on Linux, Windows and macOS, and PyPI releases go through Trusted Publishing. Running commands over SSH is M1.</p>
   </div></details>

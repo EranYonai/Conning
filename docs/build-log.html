@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+</head>
+<body>
+<!--
+  Conning: the build log, as ONE self-contained page (Google Fonts are the only external load).
+  For future editors (human or agent):
+  - Hero and "The story so far" are CURATED. Add or edit a chapter only when the story moves. Keep each to
+    2-4 short paragraphs plus at most one artifact (a verbatim quote, a tiny terminal snippet or a figure).
+  - "Decisions" is a table: one row per decision, one line per cell. A superseded decision keeps its row,
+    struck through, naming its successor. Open questions are a short list under it.
+  - Dated entries go in the appendix, newest first, each in its own <details>, above the NEW ENTRIES marker.
+  - Never put real hostnames, IPs or passwords here; this is an open-source project. Placeholders only.
+  - Colors are tokens on :root with dark-mode overrides; the theme toggle stores "conning-log-theme".
+-->
+<title>Conning Build Log</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;500&display=swap">
+<script>
+(function(){try{var t=localStorage.getItem("conning-log-theme");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}})();
+</script>
+<style>
+/* Layout: a single reading column (~68ch) under a full-width "periscope" hero; wide figures may break out to 960px. */
+:root{
+  --bg:#f2f4f5; --paper:#ffffff; --ink:#132029; --muted:#55636d; --rule:#d5dce0;
+  --brass:#9a6514; --brass-soft:#f3e7d2; --sea:#1d4e63; --sea-soft:#dde9ee;
+  --term-bg:#0f1a20; --term-fg:#d5dfe4; --term-dim:#7f939d; --term-acc:#e3ad5a; --term-ok:#86c7a3; --term-bad:#ee8e83;
+  --hero-bg:#10222c; --hero-fg:#e9eef0; --hero-muted:#9fb3bd; --hero-line:#2c4654;
+  --display:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;
+  --serif:"Source Serif 4",Charter,"Iowan Old Style",Georgia,serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0d1418; --paper:#131d23; --ink:#e3e9ec; --muted:#9aaab3; --rule:#24333b;
+  --brass:#e3ad5a; --brass-soft:#2e2518; --sea:#8cc3d6; --sea-soft:#16303b;
+  --term-bg:#081014; --hero-bg:#081218; --hero-line:#203540; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0d1418; --paper:#131d23; --ink:#e3e9ec; --muted:#9aaab3; --rule:#24333b;
+  --brass:#e3ad5a; --brass-soft:#2e2518; --sea:#8cc3d6; --sea-soft:#16303b;
+  --term-bg:#081014; --hero-bg:#081218; --hero-line:#203540; color-scheme:dark}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:4rem}
+body{background:var(--bg);color:var(--ink);font:18px/1.65 var(--serif);margin:0}
+.gutter{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.col{max-width:68ch;margin:0 auto}
+.wide{max-width:960px;margin:0 auto}
+a{color:var(--sea);text-underline-offset:3px}
+a:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+h1,h2,h3{font-family:var(--display);font-weight:800;text-wrap:balance;line-height:1.02;margin:0;letter-spacing:.01em}
+h2{font-size:2.4rem;text-transform:uppercase;margin-top:4.5rem}
+h3{font-size:1.5rem;font-weight:600;margin-top:2rem;text-transform:uppercase;letter-spacing:.03em}
+p{margin:1rem 0}
+code{font-family:var(--mono);font-size:.8em;background:var(--sea-soft);padding:.08em .32em;border-radius:3px}
+.label{font:500 .72rem/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+
+/* nav */
+nav.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(6px);border-bottom:1px solid var(--rule)}
+nav.top .in{display:flex;align-items:center;gap:18px;padding-block:10px;overflow-x:auto;white-space:nowrap;font:500 .82rem/1 var(--mono)}
+nav.top a{color:var(--muted);text-decoration:none}
+nav.top a:hover{color:var(--brass)}
+nav.top .brand{font:800 1.15rem/1 var(--display);letter-spacing:.06em;color:var(--ink);text-transform:uppercase}
+nav.top button{margin-left:auto;background:none;border:1px solid var(--rule);color:var(--ink);border-radius:999px;font:500 .8rem/1 var(--mono);padding:6px 10px;cursor:pointer}
+
+/* hero */
+.hero{background:var(--hero-bg);color:var(--hero-fg);position:relative;overflow:hidden}
+.hero .in{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:32px;align-items:center;padding-block:56px 48px}
+.hero h1{font-size:clamp(3.4rem,11vw,7.5rem);text-transform:uppercase;letter-spacing:.02em}
+.hero h1 span{color:var(--term-acc)}
+.hero p.dek{font-size:1.28rem;line-height:1.5;color:var(--hero-fg);max-width:34ch;margin-top:18px}
+.hero p.sub{color:var(--hero-muted);font-size:1rem;max-width:46ch}
+.hero .stats{display:flex;flex-wrap:wrap;gap:10px 26px;margin-top:22px;font:500 .8rem/1.3 var(--mono);color:var(--hero-muted)}
+.hero .stats b{display:block;font:800 1.9rem/1 var(--display);color:var(--hero-fg)}
+.scope{width:100%;max-width:360px;justify-self:center;aspect-ratio:1}
+.scope circle,.scope line{fill:none;stroke:var(--hero-line);stroke-width:1}
+.scope .ring{stroke:var(--term-acc);stroke-width:1.5;opacity:.0;transform-origin:180px 180px;animation:ping 4.5s ease-out infinite}
+.scope .ring.r2{animation-delay:1.5s}.scope .ring.r3{animation-delay:3s}
+.scope .blip{fill:var(--term-acc)}
+.scope .blip.off{fill:var(--hero-muted)}
+.scope text{fill:var(--hero-muted);font:500 10px var(--mono);letter-spacing:.08em}
+@keyframes ping{0%{opacity:.85;transform:scale(.08)}100%{opacity:0;transform:scale(1)}}
+@media (prefers-reduced-motion:reduce){.scope .ring{animation:none;opacity:.35}.scope .r2{transform:scale(.6)}.scope .r3{transform:scale(.9)}html{scroll-behavior:auto}}
+
+/* chapters */
+.chapter{display:grid;grid-template-columns:3.2rem minmax(0,1fr);gap:0 18px;margin-top:2.8rem}
+.chapter .n{font:800 2.6rem/1 var(--display);color:var(--brass)}
+.chapter h3{margin-top:.2rem}
+.chapter .body{min-width:0}
+blockquote{margin:1.2rem 0;padding:.2rem 0 .2rem 1.1rem;border-left:3px solid var(--brass);font-style:italic;color:var(--ink)}
+blockquote cite{display:block;font:500 .75rem/1.4 var(--mono);font-style:normal;color:var(--muted);margin-top:.4rem;letter-spacing:.06em;text-transform:uppercase}
+.term{background:var(--term-bg);color:var(--term-fg);font:13.5px/1.6 var(--mono);border-radius:6px;padding:14px 16px;overflow-x:auto;white-space:pre;margin:1.2rem 0}
+.term .d{color:var(--term-dim)}.term .a{color:var(--term-acc)}.term .ok{color:var(--term-ok)}.term .x{color:var(--term-bad)}
+.voices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);margin:1.4rem 0;font-size:.92rem;line-height:1.5}
+.voices div{background:var(--paper);padding:14px 16px;min-width:0}
+.voices b{display:block;font:600 1.05rem/1.1 var(--display);text-transform:uppercase;letter-spacing:.05em;color:var(--sea);margin-bottom:6px}
+.voices i{color:var(--muted)}
+
+/* tables */
+.tablewrap{overflow-x:auto;margin:1.4rem 0;border:1px solid var(--rule);border-radius:6px;background:var(--paper)}
+table{border-collapse:collapse;width:100%;font-size:.86rem;line-height:1.45}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--rule);vertical-align:top}
+tr:last-child td{border-bottom:0}
+th{font:500 .7rem/1.2 var(--mono);text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+td.id{font:500 .8rem/1.45 var(--mono);color:var(--brass);white-space:nowrap}
+tr.old td{color:var(--muted)} tr.old td:nth-child(2){text-decoration:line-through}
+.st{display:inline-block;font:500 .68rem/1 var(--mono);padding:4px 7px;border-radius:999px;border:1px solid currentColor;white-space:nowrap}
+.st.locked{color:var(--sea)} .st.prop{color:var(--brass)} .st.sup{color:var(--muted)}
+ul.open li{margin:.4rem 0}
+
+/* appendix */
+details{border-top:1px solid var(--rule);padding:14px 0}
+details:last-of-type{border-bottom:1px solid var(--rule)}
+summary{cursor:pointer;font:600 1.15rem/1.3 var(--display);text-transform:uppercase;letter-spacing:.04em}
+summary span{font:500 .75rem/1 var(--mono);color:var(--muted);margin-left:10px;letter-spacing:.06em}
+details .entry{font-size:.95rem}
+footer{margin-top:5rem;border-top:1px solid var(--rule);padding-block:24px 48px;color:var(--muted);font-size:.85rem}
+
+@media (max-width:760px){
+  body{font-size:17px}
+  .hero .in{grid-template-columns:1fr}
+  .scope{max-width:220px;order:-1;justify-self:start}
+  .voices{grid-template-columns:1fr}
+  .chapter{grid-template-columns:2.2rem minmax(0,1fr);gap:0 12px}
+  .chapter .n{font-size:2rem}
+  h2{font-size:2rem}
+  .term{font-size:12px}
+}
+</style>
+
+<nav class="top gutter" aria-label="Sections"><div class="in wide">
+  <span class="brand">Conning</span>
+  <a href="#story">Story</a><a href="#shape">Shape</a><a href="#decisions">Decisions</a><a href="#open">Open</a><a href="#log">Log</a>
+  <button id="theme" type="button" aria-label="Toggle dark mode">☾ theme</button>
+</div></nav>
+
+<header class="hero gutter">
+  <div class="in wide">
+    <div>
+      <div class="label" style="color:var(--hero-muted)">Build log · started 2026-10-14</div>
+      <h1 style="margin-top:14px">You have<br>the <span>conn</span></h1>
+      <p class="dek">Your agent stays on your laptop. Conning holds the keys to your test machines and lets the agent work there.</p>
+      <p class="sub">An open-source MCP server and CLI. The agent gets four lean tools to run commands and move files on remote targets. It never sees a password, and you approve anything risky.</p>
+      <div class="stats"><span><b>4</b>agent tools</span><span><b>0</b>secrets in context</span><span><b>5</b>sub-agent voices</span><span><b>2</b>debate rounds</span></div>
+    </div>
+    <svg class="scope" viewBox="0 0 360 360" role="img" aria-label="A periscope reticle with three targets on it, two live and one in observe mode">
+      <circle cx="180" cy="180" r="170"/><circle cx="180" cy="180" r="120"/><circle cx="180" cy="180" r="70"/>
+      <line x1="10" y1="180" x2="350" y2="180"/><line x1="180" y1="10" x2="180" y2="350"/>
+      <circle class="ring" cx="180" cy="180" r="170"/><circle class="ring r2" cx="180" cy="180" r="170"/><circle class="ring r3" cx="180" cy="180" r="170"/>
+      <circle class="blip" cx="250" cy="120" r="5"/><text x="260" y="116">LAB-LIN1</text>
+      <circle class="blip" cx="110" cy="235" r="5"/><text x="40" y="256">LAB-WIN1</text>
+      <circle class="blip off" cx="262" cy="262" r="5"/><text x="226" y="286">PERF · OBSERVE</text>
+      <circle cx="180" cy="180" r="4" style="fill:var(--hero-fg);stroke:none"/>
+    </svg>
+  </div>
+</header>
+
+<main class="gutter">
+<section id="story" class="col">
+  <h2>The story so far</h2>
+  <p class="label">Seven short chapters. The dated entries are in the <a href="#log">log</a>.</p>
+
+  <div class="chapter"><div class="n">1</div><div class="body">
+    <h3>The harness was in the wrong place</h3>
+    <p>The day before, Eran had shipped Cortest Harness: a small pi-style agent living <em>inside</em> a test CLI on a lab VM. It worked. Getting there took a wheel build, a sync, a module load, a credentials wizard and a reverse SSH tunnel, because the lab firewall wouldn't let the VM reach the LLM.</p>
+    <p>Looking back, the redundancy was obvious. Every developer already has a capable agent on their own machine. Why rebuild one on every VM?</p>
+    <blockquote>Instead of having the CLI on the local remote machine, developers usually prefer to work with their own setup and dev machine. … The interface is 100% agent to agent, so it needs to work in a good, efficient way.<cite>Eran, the first message</cite></blockquote>
+  </div></div>
+
+  <div class="chapter"><div class="n">2</div><div class="body">
+    <h3>Five voices, told to argue</h3>
+    <p>Eran asked for the plan to go to sub-agents and for them to fight about it. Four got the same brief with different jobs. A product lead owned the first five minutes. A security skeptic owned the threat model. A protocol architect owned every token. A contrarian argued, in the spirit of pi, that none of this needed MCP at all. A fifth agent went off to survey open source.</p>
+    <div class="voices">
+      <div><b>Product</b>"The first five minutes are the product." <i>Under three minutes from install to the first remote command.</i></div>
+      <div><b>Security</b>"The server is the wall." <i>Prompt injection from remote output, and the agent already has bash as you.</i></div>
+      <div><b>Protocol</b>"Four tools, not fourteen." <i>Exit code first, head and tail, a handle for the rest.</i></div>
+      <div><b>Contrarian</b>"You don't need MCP; ssh exists." <i>ssh config, ControlMaster, 1Password's ssh agent.</i></div>
+    </div>
+  </div></div>
+
+  <div class="chapter"><div class="n">3</div><div class="body">
+    <h3>Everyone gave something up</h3>
+    <p>Round two was rebuttals, and it was where the design was decided. Each voice read the other three and changed its mind in public. Security dropped its encrypted vault file after the contrarian argued that a homemade vault is how projects end up with CVEs. The contrarian dropped "MCP later" once product pointed out that approvals and long jobs need a long-lived process anyway. Product gave up its fifth tool and its favourite word, "rig". Protocol dropped server-side shell sessions as hidden state.</p>
+    <p>What was left is small: a CLI and an MCP server on one core, four agent tools, secrets as references, and OpenSSH under a config Conning generates itself.</p>
+    <div class="term"><span class="d">› run {"target":"tag:smoke","argv":["pytest","-q"],"wait":30}</span>
+2 targets: 1 ok, 1 running
+exit=0  lab-lin1  dur=21.4s  <span class="d">(identical output collapsed)</span>
+<span class="a">status=running</span>  lab-win1  job=j:7  out=o:3c2</div>
+  </div></div>
+
+  <div class="chapter"><div class="n">4</div><div class="body">
+    <h3>Adopt ideas</h3>
+    <blockquote>I trust myself and you more than the open source community. But we very strongly need to adopt good ideas from it.<cite>Eran</cite></blockquote>
+    <p>The survey found nothing that combines a vault that keeps secrets out of the model, a token-lean exec API, and Windows plus Linux targets. It did find good parts. From 1Password and HashiCorp Boundary we took "access without exposure", from Teleport deny-first policy, from OpenHands the timeout that hands control back instead of killing, and from Desktop Commander and E2B job handles with tail reads. One SSH MCP server measured its own 37 tools at about 43.5k tokens, which became our warning.</p>
+  </div></div>
+
+  <div class="chapter"><div class="n">5</div><div class="body">
+    <h3>The name nobody could have</h3>
+    <p>All four debaters voted for <em>Patchbay</em>, the routing panel in a studio control room. A registry check found it taken on both PyPI and npm. The replacement came from another kind of control room: the conning tower of a submarine, where "you have the conn" means you're the one steering. <em>Conning</em> was free on both registries, and the CLI reads naturally as <code>conn run lab-win1 -- pytest</code>. The machines kept the plainest name in the room: <em>targets</em>.</p>
+  </div></div>
+
+  <div class="chapter"><div class="n">6</div><div class="body">
+    <h3>Locking it in, one question at a time</h3>
+    <p>Eran asked for a walkthrough instead of a document: a summary of each section, then the questions that close it. The first answers pulled the scope in. Conning is a tool for one developer on their own machine, so the team-shareable target file went away. Agents with only bash get the CLI as well as MCP. And the agent should know its own helpers well enough to enrol a new target.</p>
+    <p>That last answer pushed on a rule all four voices had agreed on: the agent can never add a target. The compromise is that the agent proposes the target, it waits as <em>pending</em>, and Eran confirms it with one keystroke. Eran also cut a round trip: cache the CLI help in the README, so the agent doesn't have to call <code>--help</code> every session.</p>
+    <p>The sharpest moment was about approvals. Pressing "always allow" on <code>systemctl status</code> must not also allow <code>systemctl stop</code>. Eran's answer was to remember two words, not one, the same lesson as the Cortest read-only mode that leaked through cortest subcommands.</p>
+    <blockquote>Remember 2 commands prefix. You see why?<cite>Eran</cite></blockquote>
+  </div></div>
+
+  <div class="chapter"><div class="n">7</div><div class="body">
+    <h3>What's next</h3>
+    <p>Finish the walkthrough: the four tools, the safety model, Windows and transport, then scope and language. After that, a repo and a scaffold. The goal hasn't moved: your own agent, on your own machine, working on a lab VM as easily as on localhost, without ever holding its keys.</p>
+  </div></div>
+</section>
+
+<section id="shape" class="wide">
+  <div class="col"><h2>The shape, today</h2>
+  <p>Conning runs next to your agent. Everything the agent does goes through four tools. Nothing outside those four tools can reach a target, and the policy behind them lives in code, not in the prompt.</p></div>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Tool</th><th>Signature</th><th>Behavior</th></tr></thead>
+    <tbody>
+      <tr><td class="id">targets</td><td><code>targets(filter?, check?)</code></td><td>One line per target: name, OS, shell, tags, mode, last seen. Never a host, a user or a secret.</td></tr>
+      <tr><td class="id">run</td><td><code>run(target, cmd|argv, cwd?, env?, wait=30, head=20, tail=60, grep?)</code></td><td>One target, a list, or <code>tag:x</code>. Exit code first, output capped at 8 KB. Past <code>wait</code> it returns a job handle and the command keeps running.</td></tr>
+      <tr><td class="id">read</td><td><code>read(id, wait?, range?, grep?, signal?)</code></td><td>Long-polls a job for new lines, slices saved output, or pages a remote file.</td></tr>
+      <tr><td class="id">transfer</td><td><code>transfer(target, from, to)</code></td><td>Copies files between your machine and a target over the open connection and checks the sha256. File contents never enter the model's context.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="decisions" class="wide">
+  <div class="col"><h2>Decisions</h2></div>
+  <div class="tablewrap"><table>
+    <thead><tr><th>#</th><th>Decision</th><th>Why</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td class="id">D1</td><td>The agent stays on the dev machine; Conning dials out to targets</td><td>No LLM tunnel, no handoff zip, no LLM keys on VMs</td><td><span class="st locked">locked</span></td></tr>
+      <tr><td class="id">D2</td><td>One core with two front ends: an MCP server and the <code>conn</code> CLI, giving identical output</td><td>Approvals and jobs need a long-lived process; the CLI serves humans and scripts</td><td><span class="st locked">locked</span></td></tr>
+      <tr><td class="id">D3</td><td>Agents with only bash may use the CLI directly</td><td>Eran, Q1: works for any harness, including Cortest's</td><td><span class="st locked">locked</span></td></tr>
+      <tr><td class="id">D4</td><td>Single developer on their own machine</td><td>Eran, Q2: keep v0.1 small</td><td><span class="st locked">locked</span></td></tr>
+      <tr class="old"><td class="id">D4</td><td>A target file teams can commit and share</td><td>Superseded by D4 (single dev)</td><td><span class="st sup">superseded</span></td></tr>
+      <tr><td class="id">D5</td><td>Four agent tools: targets, run, read, transfer</td><td>Eran, Q4: tool schemas cost tokens every turn; fewer tools beat more</td><td><span class="st locked">locked</span></td></tr>
+      <tr><td class="id">D14</td><td>Output cap is an argument: <code>max_bytes=8192</code> by default, raised by the agent when needed, up to a ceiling you configure</td><td>Eran: lean by default, more on demand</td><td><span class="st locked">locked</span></td></tr>
+      <tr><td class="id">D15</td><td>Progress streams to the human (MCP progress, <code>conn watch</code>, a live terminal); the agent gets new lines on each <code>read</code></td><td>Eran wants a sense of progress; models only see a call when it returns</td><td><span class="st locked">locked</span></td></tr>
+      <tr><td class="id">D16</td><td>Async through <code>wait</code>: <code>0</code> returns a job id at once, the default is 30 s, longer runs become jobs</td><td>Eran: optional async calls without adding a tool</td><td><span class="st locked">locked</span></td></tr>
+      <tr><td class="id">D17</td><td>Plain-text output by default, <code>--json</code> on request</td><td>Eran, Q5: about 40% fewer tokens</td><td><span class="st locked">locked</span></td></tr>
+      <tr><td class="id">D18</td><td>"Always allow" remembers the first two words (flags skipped), per target; shell wrappers always ask</td><td>Eran, Q7: the danger lives in the verb (<code>systemctl stop</code>, <code>git push</code>)</td><td><span class="st locked">locked</span></td></tr>
+      <tr><td class="id">D19</td><td>v0.1 is SSH-only; a Windows host with no SSH server gets a fix the agent relays to you</td><td>Eran, Q8: some old images lack OpenSSH; the agent asks the user to fix it</td><td><span class="st locked">locked</span></td></tr>
+      <tr><td class="id">D20</td><td>Password auth is first-class, stored in the keychain, delivered through askpass</td><td>Eran, Q9: lab VMs are usually root plus a password</td><td><span class="st locked">locked</span></td></tr>
+      <tr><td class="id">D6</td><td>No homemade vault; secrets are references to the keychain, <code>op://</code> or ssh-agent</td><td>Less of our own crypto means fewer CVEs</td><td><span class="st prop">to confirm</span></td></tr>
+      <tr><td class="id">D7</td><td>Shell out to OpenSSH with a generated config, pinned host keys, forwarding off</td><td>Keeps ProxyJump and agents working, without inheriting unsafe options</td><td><span class="st prop">to confirm</span></td></tr>
+      <tr><td class="id">D8</td><td>Target modes: observe, ask, lease (15 min default); new lab targets start in <code>ask</code></td><td>Eran, Q6: works at once, approve the unusual</td><td><span class="st locked">locked</span></td></tr>
+      <tr><td class="id">D9</td><td>The agent proposes targets; they stay pending until you confirm</td><td>Eran wants the agent to enrol targets; one keystroke blocks injected hosts</td><td><span class="st locked">locked</span></td></tr>
+      <tr class="old"><td class="id">D9</td><td>Only humans can add targets</td><td>Superseded by D9 (agent proposes, human confirms)</td><td><span class="st sup">superseded</span></td></tr>
+      <tr><td class="id">D10</td><td>CLI help is cached in the README the agent reads</td><td>Eran: saves a <code>--help</code> round trip every session</td><td><span class="st locked">locked</span></td></tr>
+      <tr><td class="id">D11</td><td>Project is Conning, CLI <code>conn</code>; remote machines are "targets"</td><td>Free on PyPI and npm; agents already know "target"</td><td><span class="st locked">locked</span></td></tr>
+      <tr class="old"><td class="id">D11</td><td>Project named Patchbay</td><td>Taken on PyPI and npm; superseded by Conning</td><td><span class="st sup">superseded</span></td></tr>
+      <tr><td class="id">D12</td><td>No <code>{{secret:x}}</code> placeholders in agent commands in v0.1</td><td>A placeholder in a free command can be sent anywhere; human-declared env injection covers the need</td><td><span class="st prop">to confirm</span></td></tr>
+      <tr><td class="id">D21</td><td>Python, installed as a tool with <code>uv tool install conning</code></td><td>Eran, Q10: the Cortest stack; official MCP SDK; few dependencies</td><td><span class="st locked">locked</span></td></tr>
+      <tr><td class="id">D22</td><td>Public repo on GitHub, EranYonai/Conning, Apache-2.0</td><td>Eran, Q11; Apache for its patent grant</td><td><span class="st locked">locked</span></td></tr>
+      <tr><td class="id">D23</td><td>Ship as the <code>conning</code> package on PyPI, released by GitLab CI through PyPI Trusted Publishing on tag; run with <code>uvx conning mcp</code></td><td>No stored PyPI tokens; one-line MCP setup in any client</td><td><span class="st prop">to confirm</span></td></tr>
+      <tr><td class="id">D13</td><td>Build our own; adopt ideas from prior art, not dependencies</td><td>Eran: trust ourselves, adopt good ideas</td><td><span class="st locked">locked</span></td></tr>
+    </tbody>
+  </table></div>
+  <div class="col" id="open">
+    <h3>Open questions</h3>
+    <ul class="open">
+      <li>Should Conning also be listed in the official MCP Registry?</li>
+      <li>What token budget should the four tool schemas stay under, and should we publish it?</li>
+      <li>What ceiling should <code>max_bytes</code> have by default?</li>
+      <li>When does WinRM become a second connector for old Windows images?</li>
+    </ul>
+  </div>
+</section>
+
+<section id="log" class="col">
+  <h2>Appendix: the log</h2>
+  <p class="label">Dated entries, newest first.</p>
+
+  <!-- NEW ENTRIES go directly below this line -->
+  <details open><summary>#4 · The repo and the M0 scaffold <span>2026-10-14</span></summary><div class="entry">
+    <p>The repo landed on GitHub, not GitLab: <a href="https://github.com/EranYonai/Conning">EranYonai/Conning</a>, Apache-2.0 for its patent grant. The first draft PR scaffolds v0.0.1. It adds the <code>conn</code> CLI, an MCP server with exactly four tools, a fail-closed target file, the output cap, and two-word allowlist rules. Tests keep the README's CLI help in sync with the code, and another caps the size of the tool schemas, about 3 KB today. CI runs on Linux, Windows and macOS, and PyPI releases go through Trusted Publishing. Running commands over SSH is M1.</p>
+  </div></details>
+  <details open><summary>#3 · Walkthrough, part two <span>2026-10-14</span></summary><div class="entry">
+    <p>Tools locked at four, with plain text by default (D5, D17). Eran turned the 8 KB cap into an argument the agent can raise (D14) and asked for progress and async. Claude explained that the model only sees a tool call when it returns, so progress streams to the human while the agent long-polls for new lines (D15). Async came from <code>wait=0</code> (D16), with no new tool. New lab targets start in <code>ask</code> (D8). Eran asked what "always allow" remembers, then set it to the first two words: <em>"You see why?"</em> The verb is where the danger lives (D18). Transport is SSH-only, and Windows hosts without OpenSSH get a fix the agent relays to the user (D19). Passwords are first-class (D20).</p>
+  </div></details>
+  <details><summary>#2 · Walkthrough, part one <span>2026-10-14</span></summary><div class="entry">
+    <p>Eran asked for a section-by-section walkthrough to lock the design. Answers so far: agents may use the CLI from bash (D3); single developer on their own machine, no team file (D4); the name is Conning (D11); cache the CLI help in the README (D10). Eran wants the agent able to enrol targets. Claude proposed "agent proposes, human confirms" (D9) because one injected log line could otherwise become a live host. Eran also asked for this log.</p>
+  </div></details>
+  <details><summary>#1 · Idea, debate, design page <span>2026-10-14</span></summary><div class="entry">
+    <p>Eran's idea: a control room MCP that vaults credentials for remote test machines and lets a developer's own agent run commands there. Four sub-agents (product, security, protocol, contrarian) wrote positions and then rebutted each other. A fifth surveyed open source: SSH MCP servers, credential brokers, Ansible and pyinfra, WinRM libraries, and agent sandboxes. By round two the four had converged on the shape in this log. A registry check retired Patchbay and Conning took its place. The first design page was published with mocks of onboarding, the agent's view, the watch view and the target file.</p>
+  </div></details>
+</section>
+
+<footer class="col">Written by Claude with Eran, from the project thread. Placeholders only; no real hosts or credentials appear on this page.</footer>
+</main>
+
+<script>
+(function(){var b=document.getElementById("theme");if(!b)return;
+b.addEventListener("click",function(){var r=document.documentElement,cur=r.getAttribute("data-theme");
+var dark=cur?cur==="dark":matchMedia("(prefers-color-scheme: dark)").matches;var next=dark?"light":"dark";
+r.setAttribute("data-theme",next);try{localStorage.setItem("conning-log-theme",next)}catch(e){}});})();
+</script>
+
+</body>
+</html>

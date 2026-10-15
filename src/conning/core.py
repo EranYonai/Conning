@@ -10,7 +10,7 @@ from pathlib import Path
 
 from conning import audit, notify, paths, remote
 from conning.output import DEFAULT_MAX_BYTES, clamp_max_bytes, render, render_fanout
-from conning.policy import is_allowed, split_command
+from conning.policy import is_allowed, is_safe, split_command
 from conning.secrets import SecretError, redact
 from conning.ssh import SSHError
 from conning.state import Approval, Job, lease_until, new_id, problems
@@ -63,7 +63,7 @@ class Core:
             return "blocked"
         if lease_until(t.name):
             return "run"
-        if is_allowed(policy_argv, t.allow):
+        if is_allowed(policy_argv, t.allow) or (t.safe and is_safe(policy_argv)):
             return "run"
         return "refused" if t.mode == "observe" else "approve"
 

@@ -122,11 +122,11 @@ def test_run_and_approval_are_audited(core, monkeypatch):
     monkeypatch.setattr(notify, "approval_waiting", lambda *a: noticed.append(a))
     write_targets(target("lab", allow=(("echo",),)))
     assert core.run("lab", argv=["echo", "hi"]).startswith("exit=0")
-    out = core.run("lab", cmd="uname -a")
+    out = core.run("lab", cmd="make -j4")
     approval_id = out.split("id=a:")[1].split()[0]
     assert [e["event"] for e in events()] == ["run", "start", "exit", "run", "approval"]
     assert events("run")[1]["decision"] == "approve" and events("approval")[0]["id"] == approval_id
-    assert noticed == [(approval_id, ["lab"], "uname -a")]
+    assert noticed == [(approval_id, ["lab"], "make -j4")]
 
 
 @needs_sh
@@ -179,7 +179,10 @@ def test_allow_lists_rules_without_a_terminal(home):
     write_targets(target("lab", allow=(("df",), ("systemctl", "status"))), target("db", tags=("x",)))
     io = FakeIO(tty=False)
     assert admin.allow(io, "lab,db", []) == 0
-    assert io.said == ["lab: 'df', 'systemctl status'", "db: (none)"]
+    assert io.said == [
+        "lab: the built-in read-only list; rules: 'df', 'systemctl status'",
+        "db: the built-in read-only list; rules: (none)",
+    ]
 
 
 def test_allow_adds_a_rule_after_confirming(home):
@@ -222,7 +225,8 @@ def test_deny_removes_a_rule_without_a_terminal(home):
     assert admin.deny(io, "lab,db", ["df"]) == 0
     assert load_targets(paths.targets_file())["lab"].allow == (("uname",),)
     assert "'df' now asks again on lab" in io.text and events("rule")[0]["change"] == "deny"
-    assert admin.deny(io, "lab", ["df"]) == 0 and "no target had the rule 'df'" in io.text
+    assert admin.deny(io, "lab", ["df"]) == 0 and "'df' is on the built-in read-only list" in io.text
+    assert admin.deny(io, "lab", ["make"]) == 0 and "no target had the rule 'make'" in io.text
     assert admin.deny(io, "nope", ["df"]) == 1
     assert admin.deny(io, "lab", []) == 1 and "give the command words" in io.text
 
@@ -498,7 +502,8 @@ def test_client_prompt_skips_engine_errors(home):
 
 def test_would_ask(core):
     write_targets(target("lab", allow=(("df",),)), target("obs", mode="observe"))
-    assert core.would_ask("lab,obs", None, ["uname"]) == ["lab"]
+    assert core.would_ask("lab,obs", None, ["make"]) == ["lab"]
+    assert core.would_ask("lab", None, ["uname", "-a"]) == []  # on the built-in list
     assert core.would_ask("lab", "df -h", None) == []
     assert core.would_ask("nope", None, ["x"]) == []
     paths.targets_file().write_text("[bad\n")

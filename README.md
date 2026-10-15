@@ -129,7 +129,10 @@ two words, or deny), and the agent picks up the result with `read a:<id>`:
 - **In `conn watch`**, which also shows every command and its output as it happens.
 - **With `conn approve a:<id>`** in any terminal.
 
-`conn allow <target> systemctl status` lets a command run without asking from then on; `conn deny`
+Read-only commands such as `uname`, `hostname`, `df`, `ps`, `ls`, `ip addr`, `systemctl status` and
+`journalctl` run without asking on every target; each is checked so its changing forms (`hostname x`,
+`ip addr add`) still ask, and `safe = false` in a target's entry turns the list off.
+`conn allow <target> make test` lets another command run without asking from then on; `conn deny`
 takes it back. Every command, answer and rule change lands in a hash-chained audit log, and
 `conn doctor` checks your setup when something doesn't work.
 
@@ -137,8 +140,8 @@ takes it back. Every command, answer and rule change lands in a hash-chained aud
 
 | Mode | What the agent can do | Default for |
 |---|---|---|
-| `observe` | Allowlisted read commands only; everything else is refused. | targets tagged `shared` or `prod` |
-| `ask` | Allowlisted commands run; anything else waits for your approval. | new lab targets |
+| `observe` | The built-in read-only list and allowlisted commands only; everything else is refused. | targets tagged `shared` or `prod` |
+| `ask` | The built-in read-only list and allowlisted commands run; anything else waits for your approval. | new lab targets |
 | `lease` | Any command, for a time box you grant (15 min default, 60 max). | never by default |
 
 - No tool returns a secret, adds a live target or changes policy.

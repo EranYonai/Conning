@@ -46,6 +46,10 @@ call only when it returns, so the agent gets progress by polling `read`.
 | `lease` | anything, for a time box (15 min default, 60 max) | never |
 
 - "Always allow" stores the first two words of the command (flags skipped) in the target's allowlist.
+- Every target also allows a built-in list of read-only commands (`uname`, `hostname`, `df`, `ps`, `ls`,
+  `ip addr`, `systemctl status`, `journalctl`, `Get-Process`...), each with its own argument check so
+  `hostname x` or `ip addr add` still ask. The program must be a bare name. File readers (`cat`, `head`,
+  `tail`) are not on it. `safe = false` on a target turns the list off.
 - Shell wrappers (`sh -c`, `python -c`, `sudo`, `env`...) and shell syntax always ask.
 - Agent-added targets are pending until `conn approve`. The human sees host, fingerprint and secret source.
 - Secrets: references only (`keychain:`, `op://`, ssh-agent, FIDO). Passwords via an askpass helper.
@@ -116,6 +120,7 @@ no terminal, since taking trust away is always safe. `conn allow <target>` lists
 | D32 | The tool-schema size stays a test cap, not a published token budget | Eran: no need to publish it | locked |
 | ~~D33~~ | ~~Approving in the agent client is opt-in~~ | Superseded by D38 | superseded |
 | D38 | Approving in the agent client is on by default for every MCP client that supports elicitation (`--no-approve-in-client` turns it off), asked before the command is queued, through the SDK's resolver so both protocol versions work | Eran: a general MCP for all agents, and in-chat approval should be on; clients without elicitation fall back to `conn watch` / `conn approve` | locked |
+| D39 | Every target allows a built-in read-only list (system info, processes, disks, network, service status, logs), checked per command so changing forms still ask; bare program names only; no file readers; `safe = false` opts a target out | Eran (#4): new machines shouldn't need an approval for `uname`; `read` already covers files | locked |
 | D34 | One audit log in the state dir, JSON lines, each with the sha256 of the line before; `conn watch` and `conn doctor` read it | One source for the live view and for after-the-fact review; edits show up | locked |
 | D35 | `conn allow` needs a terminal and a yes; `conn deny` does not | Granting trust is human-only (like approve and lease); revoking it is always safe | locked |
 | D36 | `conn watch` reads only local files (audit log, job logs) and never contacts a target | Runs beside any number of agents without racing their reads | locked |

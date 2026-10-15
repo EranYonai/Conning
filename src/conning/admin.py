@@ -15,7 +15,7 @@ from typing import Protocol
 
 from conning import audit, paths, ssh
 from conning.core import Core
-from conning.policy import WRAPPERS, program, remembered_rule, split_command
+from conning.policy import SAFE, WRAPPERS, program, remembered_rule, split_command
 from conning.secrets import SecretError, store_in_keychain
 from conning.state import Approval, Job, grant_lease, set_problem
 from conning.targets import AUTHS, MODES, NAME_RE, Target, TargetFileError, load_targets, save_targets, select
@@ -301,7 +301,8 @@ def allow(io: IO, selector: str, words: list[str]) -> int:
     if not words:
         for t in chosen:
             rules = ", ".join("'" + " ".join(r) + "'" for r in t.allow) or "(none)"
-            io.say(f"{t.name}: {rules}")
+            safe = "the built-in read-only list" if t.safe else "no built-in list (safe = false)"
+            io.say(f"{t.name}: {safe}; rules: {rules}")
         return 0
     if (code := _need_tty(io, "changing the allowlist")) is not None:
         return code
@@ -342,7 +343,12 @@ def deny(io: IO, selector: str, words: list[str]) -> int:
             audit.record("rule", target=t.name, change="deny", rule=" ".join(rule))
     save_targets(path, targets)
     shown = " ".join(rule)
-    io.say(f"'{shown}' now asks again on {', '.join(changed)}" if changed else f"no target had the rule '{shown}'")
+    if changed:
+        io.say(f"'{shown}' now asks again on {', '.join(changed)}")
+    elif rule[0] in SAFE:
+        io.say(f"'{rule[0]}' is on the built-in read-only list; to make it ask, set safe = false for the target")
+    else:
+        io.say(f"no target had the rule '{shown}'")
     return 0
 
 

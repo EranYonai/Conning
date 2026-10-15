@@ -7,6 +7,8 @@
   says when a command is waiting (`CONNING_NOTIFY=0` turns it off).
 - `conn watch`: every command, decision and job exit as it happens, new job output, and approval prompts.
 - Audit log in the state dir (`audit.jsonl`), hash-chained; `conn doctor` reports edits.
+- Built-in read-only list: `uname`, `hostname`, `df`, `ps`, `ls`, `ip addr`, `systemctl status`, `journalctl`,
+  `Get-Process` and more run without asking, checked so changing forms still ask (`safe = false` opts out).
 - `conn allow <target> [words]` lists or adds allow rules; `conn deny <target> <words>` removes one.
 - `conn doctor` checks the config and state dirs, ssh tools, keychain, secret sources, pinned keys and leases.
 

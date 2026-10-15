@@ -197,6 +197,8 @@ After changing the CLI, refresh the README block with `uv run conn help --markdo
 
 - [docs/design.md](docs/design.md): the design and every decision, with its status.
 - [docs/blog.html](docs/blog.html): the development blog, from the first idea to today.
+- [docs/manual-test.md](docs/manual-test.md): a ten-minute check of every feature against a throwaway target.
+- [docs/field-test.md](docs/field-test.md): using it for real work, and how to report what gets in the way.
 
 ## License
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- The Docker image is built with `uv sync --frozen` from `uv.lock`, like every other install in the repo.
+- `docs/field-test.md` and a **Field report** issue form, for real-use testing across clients, install methods and targets.
+
 ## 0.3.0 (2026-10-15)
 
 - The MCP server ships as a container image too: `ghcr.io/eranyonai/conning` (amd64 and arm64),

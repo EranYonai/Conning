@@ -185,6 +185,30 @@ the same reply after you pick. On macOS and Linux a desktop notification appears
 Expect `grep -c . $CONNING_STATE/audit.jsonl` to count every step above, and `conn doctor` to warn if
 you edit a line of that file.
 
+## 12. `conn mcp install`
+
+Try it against a throwaway home first, so your real agent settings stay untouched:
+
+```sh
+HOME=$CONNING_HOME/fakehome conn mcp install cursor --dry-run   # expect: would write .../mcp.json and cli-config.json
+HOME=$CONNING_HOME/fakehome conn mcp install cursor             # expect: wrote ... (twice)
+HOME=$CONNING_HOME/fakehome conn mcp install cursor             # expect: cursor: already installed, nothing to change
+cat $CONNING_HOME/fakehome/.cursor/cli-config.json              # expect: Shell(ssh), Shell(scp), Shell(sftp), Read(<config>/**)
+```
+For claude it also runs `claude mcp add --scope user conning -- ...` when the `claude` CLI is on PATH.
+
+## 13. Windows jobs (only with a Windows lab VM)
+
+Add it as in step 3 (`--os windows`), lease it, then:
+
+```sh
+conn run win --shell --wait 0 'Write-Output start; Start-Sleep 30; Write-Output done'
+conn read j:<job> --wait 5         # expect: status=running with "start"
+conn read j:<job> --signal TERM    # then: read j:<job> --wait 10 shows exit=143
+conn run win --timeout 2 Start-Sleep 30      # expect: exit=124 ... (timed out)
+```
+On the VM, `Get-Process pwsh` shows no leftover job after each of these.
+
 ## Clean up
 
 ```sh

@@ -13,8 +13,6 @@ from conning.secrets import SecretError
 from conning.ssh import SSHError
 from conning.targets import AUTHS, MODES, TargetFileError
 
-PLANNED = "not implemented yet; see the milestones in docs/design.md"
-
 
 def _core():
     from conning.core import Core
@@ -31,11 +29,6 @@ def _io():
 def _emit(text: str) -> int:
     print(text)
     return 1 if text.startswith("error:") else 0
-
-
-def _planned(args: argparse.Namespace) -> int:
-    print(f"conn {args.command}: {PLANNED}", file=sys.stderr)
-    return 2
 
 
 def _targets(args: argparse.Namespace) -> int:
@@ -155,7 +148,9 @@ def _mcp(args: argparse.Namespace) -> int:
 
         build_server(approve_in_client=args.approve_in_client).run("stdio")
         return 0
-    return _planned(argparse.Namespace(command=f"mcp {args.mcp_command}"))
+    from conning.install import install
+
+    return install(_io(), args.client, dry_run=args.dry_run)
 
 
 def _help(args: argparse.Namespace) -> int:
@@ -168,13 +163,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--version", action="version", version=f"conning {__version__}")
     sub = p.add_subparsers(dest="command", metavar="<command>")
 
-    def cmd(name: str, help: str, func=_planned, aliases=()) -> argparse.ArgumentParser:
+    def cmd(name: str, help: str, func, aliases=()) -> argparse.ArgumentParser:
         sp = sub.add_parser(name, help=help, description=help, aliases=list(aliases))
         sp.set_defaults(func=func)
         return sp
 
     # Agent-facing: same output as the MCP tools.
-    sp = cmd("targets", "List targets: name, OS, shell, tags, mode. Never hosts or secrets.", _targets, ["ls"])
+    sp = cmd("targets", "List targets: name, OS, shell, user, tags, mode. Never hosts or secrets.", _targets, ["ls"])
     sp.add_argument("filter", nargs="?", help="'tag:<tag>' or comma-separated names")
     sp.add_argument("--check", action="store_true", help="probe reachability in parallel")
 
@@ -251,9 +246,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     mcp_sub = sp.add_subparsers(dest="mcp_command", metavar="<serve|install>")
     mcp_sub.add_parser("serve", help="run the MCP server on stdio (the default)")
-    mcp_sub.add_parser("install", help="add Conning to claude, codex or cursor").add_argument(
-        "client", choices=["claude", "codex", "cursor"]
-    )
+    sp = mcp_sub.add_parser("install", help="add Conning to claude, codex or cursor, and deny raw ssh/scp")
+    sp.add_argument("client", choices=["claude", "codex", "cursor"])
+    sp.add_argument("--dry-run", action="store_true", help="show what would change")
 
     sp = cmd("help", "Show this help; --markdown prints the block cached in README.md.", _help)
     sp.add_argument("--markdown", action="store_true")

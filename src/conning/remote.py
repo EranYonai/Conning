@@ -1,8 +1,11 @@
-"""Scripts Conning sends to targets. Each one goes over ssh's stdin to `sh -s` (POSIX) or as a
-base64 `-EncodedCommand` (PowerShell), so quoting never breaks and nothing sensitive is on argv.
+"""Scripts Conning sends to targets. Each one goes over ssh's stdin: to `sh -s` (POSIX), or to a
+PowerShell whose base64 `-EncodedCommand` only reads stdin and runs it. Quoting never breaks and
+nothing sensitive is on argv.
 
-A POSIX job runs detached (nohup, in its own process group via setsid when present) and writes to files under
-~/.conning/jobs on the target, so it survives a dropped connection and can be polled from any process.
+A job runs detached and writes to files under ~/.conning/jobs on the target, so it survives a dropped
+connection and can be polled from any process. On POSIX that is nohup, in its own process group via
+setsid when present. On Windows, OpenSSH kills everything a session started when it closes, so the
+job's wrapper is created through WMI (Win32_Process), outside the session (D43).
 """
 
 import base64
@@ -103,6 +106,140 @@ def pwsh_command(script: str, shell: str = "pwsh") -> str:
     exe = "powershell" if shell == "powershell" else "pwsh"
     encoded = base64.b64encode(script.encode("utf-16-le")).decode()
     return f"{exe} -NoProfile -NonInteractive -EncodedCommand {encoded}"
+
+
+# Runs the script that arrives on stdin, so a secret in it never shows up in a process listing.
+PWSH_STDIN = (
+    "[Console]::InputEncoding = [Text.UTF8Encoding]::new($false); "
+    "$s = [Console]::In.ReadToEnd(); . ([scriptblock]::Create($s))"
+)
+PWSH_DETACH_FAILED = "CONNING-NO-DETACH"
+SIGNAL_RC = {"INT": 130, "TERM": 143, "KILL": 137}  # what a POSIX shell reports, so both read alike
+
+
+def pwsh_stdin(shell: str = "pwsh") -> str:
+    return pwsh_command(PWSH_STDIN, shell)
+
+
+def _pwsh_job_base(job_id: str) -> str:
+    if not job_id.isalnum():
+        raise ValueError(f"bad job id {job_id!r}")
+    return f"$d = [IO.Path]::Combine($HOME, '.conning', 'jobs')\n$b = [IO.Path]::Combine($d, '{job_id}')\n"
+
+
+def _b64(text: str) -> str:
+    return base64.b64encode(text.encode()).decode()
+
+
+# The wrapper the job runs under, the counterpart of the POSIX `nohup sh -c ...`. It loads the
+# injected env (and deletes the file), runs the command with stdout and stderr merged into $b.out,
+# enforces the timeout on the whole process tree, and writes the exit code last.
+PWSH_WRAPPER = r"""$b = $PSCommandPath.Substring(0, $PSCommandPath.Length - '.run.ps1'.Length)
+$win = $env:OS -eq 'Windows_NT'
+if (Test-Path -LiteralPath "$b.env") {
+    foreach ($line in [IO.File]::ReadAllLines("$b.env")) {
+        $k, $v = $line -split "`t", 2
+        [Environment]::SetEnvironmentVariable($k, [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($v)))
+    }
+    Remove-Item -LiteralPath "$b.env" -Force
+}
+$exe = (Get-Process -Id $PID).Path
+$run = "`"$exe`" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$b.ps1`" > `"$b.out`" 2>&1"
+if ($win) { $p = Start-Process -FilePath $env:ComSpec -ArgumentList "/d /s /c `"$run`"" -NoNewWindow -PassThru }
+else {
+    [IO.File]::WriteAllText("$b.sh", "exec $run`n")
+    $p = Start-Process -FilePath '/bin/sh' -ArgumentList "`"$b.sh`"" -PassThru
+}
+$null = $p.Handle  # keeps ExitCode readable after the process ends
+[IO.File]::WriteAllText("$b.pid", "$($p.Id)")
+if ($p.WaitForExit(TIMEOUT_MS)) { $p.WaitForExit(); $rc = $p.ExitCode }
+else {
+    if ($win) { & taskkill.exe /T /F /PID $p.Id *> $null } else { & pkill -KILL -P $p.Id; $p.Kill() }
+    $p.WaitForExit(); $rc = 124
+}
+if (Test-Path -LiteralPath "$b.sig") {
+    $rc = @{INT = 130; TERM = 143; KILL = 137}[[IO.File]::ReadAllText("$b.sig").Trim()]
+}
+[IO.File]::WriteAllText("$b.rc", "$rc")
+"""
+
+
+def pwsh_start(job_id: str, command: str, *, cwd: str | None, timeout: int, env: dict[str, str]) -> str:
+    """Start `command` detached on a Windows target. Prints the wrapper's pid, or PWSH_DETACH_FAILED
+    when WMI can't create the process (the caller then runs the command synchronously)."""
+    job = "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)\n" + pwsh_script(command, cwd=cwd, env={})
+    wrapper = PWSH_WRAPPER.replace("TIMEOUT_MS", str(int(timeout) * 1000))
+    env_lines = "".join(f"{k}\t{_b64(v)}\n" for k, v in env.items())
+    utf8 = "[Text.UTF8Encoding]::new($true)"  # a BOM, so Windows PowerShell reads -File scripts as UTF-8
+    lines = [
+        "$ErrorActionPreference = 'Stop'",
+        _pwsh_job_base(job_id).rstrip("\n"),
+        "$null = New-Item -ItemType Directory -Force -Path $d",
+        "$win = $env:OS -eq 'Windows_NT'",
+        # Only this user (and SYSTEM) may read the jobs folder, like chmod 700 on POSIX.
+        "if ($win) { $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value; "
+        '& icacls.exe $d /inheritance:r /grant:r "*${sid}:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F" *> $null }',
+        "function Put($path, $b64) { [IO.File]::WriteAllText($path, "
+        f"[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b64)), {utf8}) }}",
+        f"Put \"$b.ps1\" '{_b64(job)}'",
+        f"Put \"$b.run.ps1\" '{_b64(wrapper)}'",
+    ]
+    if env_lines:
+        lines.append(f"Put \"$b.env\" '{_b64(env_lines)}'")
+    lines += [
+        "$exe = (Get-Process -Id $PID).Path",
+        '$line = "`"$exe`" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$b.run.ps1`""',
+        "if ($win) {",
+        "    try {",
+        "        $r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create "
+        "-Arguments @{ CommandLine = $line; CurrentDirectory = $d }",
+        '        if ($r.ReturnValue -ne 0) { throw "Win32_Process.Create returned $($r.ReturnValue)" }',
+        "        $r.ProcessId",
+        "    } catch {",
+        '        Remove-Item -LiteralPath "$b.env" -Force -ErrorAction SilentlyContinue',
+        f'        "{PWSH_DETACH_FAILED} $_"; exit 98',
+        "    }",
+        "} else {",
+        "    $p = Start-Process -FilePath $exe "
+        "-ArgumentList @('-NoProfile', '-NonInteractive', '-File', \"$b.run.ps1\") "
+        '-RedirectStandardOutput "$b.wrap" -RedirectStandardError "$b.wrap.err" -PassThru',
+        "    $p.Id",
+        "}",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def pwsh_poll(job_id: str, offset: int, limit: int) -> str:
+    """The PowerShell twin of posix_poll: `CONNING-RC <rc|->`, then raw output bytes from `offset`."""
+    return _pwsh_job_base(job_id) + (
+        '$rc = if (Test-Path -LiteralPath "$b.rc") { [IO.File]::ReadAllText("$b.rc").Trim() } else { \'-\' }\n'
+        "$o = [Console]::OpenStandardOutput()\n"
+        f'$h = [Text.Encoding]::ASCII.GetBytes("{POLL_MARK} $rc`n"); $o.Write($h, 0, $h.Length)\n'
+        'if (Test-Path -LiteralPath "$b.out") {\n'
+        "    $f = [IO.File]::Open(\"$b.out\", 'Open', 'Read', 'ReadWrite')\n"
+        f"    try {{ $null = $f.Seek({int(offset)}, 'Begin'); $buf = New-Object byte[] {int(limit)}; $n = 0\n"
+        "        while ($n -lt $buf.Length) {\n"
+        "            $k = $f.Read($buf, $n, $buf.Length - $n); if ($k -le 0) { break }; $n += $k\n"
+        "        }\n"
+        "        $o.Write($buf, 0, $n) } finally { $f.Close() }\n"
+        "}\n"
+        "$o.Flush()\n"
+    )
+
+
+def pwsh_signal(job_id: str, signal: str) -> str:
+    """Windows has no signals: any of them records its name (so the exit code reads like POSIX) and
+    ends the job's whole process tree."""
+    if signal not in SIGNAL_RC:
+        raise ValueError(f"unsupported signal {signal!r}")
+    return _pwsh_job_base(job_id) + (
+        "if (-not (Test-Path -LiteralPath \"$b.pid\")) { 'no such job'; exit 1 }\n"
+        '$id = [int][IO.File]::ReadAllText("$b.pid").Trim()\n'
+        f"[IO.File]::WriteAllText(\"$b.sig\", '{signal}')\n"
+        "if ($env:OS -eq 'Windows_NT') { & taskkill.exe /T /F /PID $id *> $null }\n"
+        "else { & pkill -KILL -P $id; Stop-Process -Id $id -Force -ErrorAction SilentlyContinue }\n"
+        "exit 0\n"
+    )
 
 
 def pwsh_script(command: str, *, cwd: str | None, env: dict[str, str]) -> str:

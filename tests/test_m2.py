@@ -5,7 +5,7 @@ import json
 import time
 
 import pytest
-from conftest import needs_sh, target, write_targets
+from conftest import needs_pwsh, needs_sh, target, write_targets
 from test_admin import FakeIO
 
 from conning import admin, audit, cli, doctor, notify, paths, secrets, server, ssh, watch
@@ -141,10 +141,10 @@ def test_long_job_exit_and_file_reads_are_audited(core, transport):
     assert events("read-file")[0]["path"].endswith("f.txt")
 
 
-def test_windows_sync_job_and_transfer_are_audited(core, transport, tmp_path):
+@needs_pwsh
+def test_windows_job_and_transfer_are_audited(core, transport, tmp_path):
     write_targets(target("win", os="windows", shell="pwsh", allow=(("hostname",),)))
-    transport.canned["pwsh"] = (0, b"WIN-1\n")
-    assert core.run("win", argv=["hostname"]).startswith("exit=0")
+    assert core.run("win", argv=["hostname"], wait=30).startswith("exit=0")
     assert [e["event"] for e in events()][-2:] == ["start", "exit"]
     assert core.transfer("local:/nope", "win:/x").startswith("error:")
     assert events("transfer")[0]["result"].startswith("error: local:")

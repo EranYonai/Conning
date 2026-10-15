@@ -111,7 +111,7 @@ no terminal, since taking trust away is always safe. `conn allow <target>` lists
 | D22 | Public repo, github.com/EranYonai/Conning, Apache-2.0 | Patent grant suits security tooling | locked |
 | D23 | PyPI package `conning`, released from CI via Trusted Publishing on tag; `uvx conning mcp` | No stored tokens; one-line MCP setup | locked |
 | D24 | POSIX jobs run detached on the target (`$HOME/.conning/jobs`), in their own process group, polled by byte offset | A dropped SSH link never kills a test run; signals reach the whole tree | locked |
-| D25 | Windows targets run synchronously in M1 (PowerShell `-EncodedCommand`) | Ship Linux jobs first; detached Windows jobs later | proposed |
+| ~~D25~~ | ~~Windows targets run synchronously in M1~~ | Superseded by D43 | superseded |
 | D26 | Approvals in M1 are answered at a terminal with `conn approve a:<id>`; one approval covers a whole fan-out | Works today without elicitation; M2 adds `conn watch` and prompts | locked |
 | D27 | Unit tests run Conning's real remote scripts with the local `sh` behind a fake transport; CI gates coverage at 95% | Tests the job logic itself without a server | locked |
 | D28 | Config dir (targets, pinned keys, leases) is only read when commands run; job output, approvals and generated ssh configs live in a state dir (`XDG_STATE_HOME`, `CONNING_STATE`) | Agent sandboxes mount config read-only; only `add`, `approve`, `rm`, `lease` change trust | locked |
@@ -125,6 +125,8 @@ no terminal, since taking trust away is always safe. `conn allow <target>` lists
 | D40 | `conn run` at a terminal asks right there (once, always, deny) and prints the result; without a terminal it returns `a:<id>` as before. A target name where the command starts is an error that suggests `a,b` | Eran, first real run: copying an id into `conn approve` is clumsy, and the CLI's own hint made a second target name look required | locked |
 | D41 | `targets` shows the user each target logs in as (never the host or a secret); `conn add <name> --like <target> --user <u>` adds the same machine as another user | Eran: which user? A target is one login, so another user is another target; the user is not a secret | locked |
 | D42 | POSIX jobs adopt the PATH of a login shell (`bash -l`, else `sh -l`); the profile's other output is dropped | A non-interactive ssh session skips the profile, so tools in `~/.local/bin` or `/opt` were "not found" (exit 127) | locked |
+| D43 | Windows jobs run detached like POSIX ones: the job's wrapper is created through WMI (`Win32_Process.Create`) outside the ssh session, merges stdout and stderr into `~/.conning/jobs/<id>.out`, enforces the timeout on the whole process tree, and is polled by byte offset. Scripts reach PowerShell over stdin, so injected secrets never sit on a command line; they pass to the wrapper in a file only the user can read, deleted as it starts. Where WMI is off, the command runs while connected, as in M1 | Windows OpenSSH ends every process a session started when it closes; a test run must survive a dropped link | locked |
+| D44 | `conn mcp install claude\|codex\|cursor` adds the server and denies the agent raw `ssh`/`scp`/`sftp`, the human-only `conn approve`/`lease`/`allow`, and reads of Conning's config dir, in each client's own rule format. Files are merged, never replaced, with a backup; a second run changes nothing; `--dry-run` shows the plan | One command to set up any client; the rules are a guardrail (they match what the agent types), the four tools stay the wall | locked |
 | D34 | One audit log in the state dir, JSON lines, each with the sha256 of the line before; `conn watch` and `conn doctor` read it | One source for the live view and for after-the-fact review; edits show up | locked |
 | D35 | `conn allow` needs a terminal and a yes; `conn deny` does not | Granting trust is human-only (like approve and lease); revoking it is always safe | locked |
 | D36 | `conn watch` reads only local files (audit log, job logs) and never contacts a target | Runs beside any number of agents without racing their reads | locked |
@@ -153,9 +155,9 @@ no terminal, since taking trust away is always safe. `conn allow <target>` lists
 - **M1 (done):** OpenSSH connector (generated config, pinning, askpass), `run`/`read`/`transfer`, job
   table, `add`/`approve`/`import`/`test`/`rm`/`lease`, keychain, `op://` and `env:` resolution,
   redaction, approvals by `conn approve a:<id>`.
-- **M2 (in progress):** approvals in the agent client (MCP elicitation), `conn watch`, desktop
-  notifications, hash-chained audit log, `allow`/`deny`, `doctor`. Next in M2: `mcp install` with
-  permission rules, detached jobs on Windows.
+- **M2 (done once merged):** approvals in the agent client (MCP elicitation) and at the terminal,
+  `conn watch`, desktop notifications, hash-chained audit log, `allow`/`deny`, `doctor`, the built-in
+  read-only list, `mcp install` with permission rules, detached jobs on Windows.
 - **Later:** WinRM connector, short-lived SSH certificates, per-target prepare recipes, MCP Registry listing.
 
 ## Open questions

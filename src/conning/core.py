@@ -60,6 +60,12 @@ class Core:
             return "& " + " ".join("'" + a.replace("'", "''") + "'" for a in argv or [])
         return shlex.join(argv or [])
 
+    def _script(self, t: Target, script: str, timeout: float = 60) -> tuple[int, bytes]:
+        """Run one of Conning's own scripts on the target, sent over stdin."""
+        if t.os == "windows":
+            return self.transport.exec(t, remote.pwsh_stdin(t.shell), stdin=script.encode(), timeout=timeout)
+        return self.transport.exec(t, "sh -s", stdin=script.encode(), timeout=timeout)
+
     def _decide(self, t: Target, policy_argv: list[str] | None) -> str:
         """run | approve | refused | blocked"""
         if t.status == "pending":
@@ -171,19 +177,20 @@ class Core:
         job = Job(id=new_id(), target=t.name, command=command, started=self.clock(), posix=t.os != "windows")
         try:
             env = self.transport.inject_env(t)
-            if job.posix:
-                script = remote.posix_start(job.id, command, cwd=cwd, timeout=timeout, env=env)
-                rc, out = self.transport.exec(t, "sh -s", stdin=script.encode(), timeout=60)
-                if rc != 0:
-                    return None, f"error: {t.name}: {self.transport.explain(t, rc, out)}"
-                job.pid = out.decode(errors="replace").strip().splitlines()[-1] if out.strip() else None
-            else:  # PowerShell targets run synchronously until detached Windows jobs land
-                script = remote.pwsh_script(command, cwd=cwd, env=env)
-                rc, out = self.transport.exec(t, remote.pwsh_command(script, t.shell), timeout=timeout)
+            start = remote.posix_start if job.posix else remote.pwsh_start
+            rc, out = self._script(t, start(job.id, command, cwd=cwd, timeout=timeout, env=env))
+            if rc == 98 and remote.PWSH_DETACH_FAILED.encode() in out:
+                # WMI is off on this machine: run while connected, as M1 did, and say so.
+                job.detached = False
+                rc, out = self._script(t, remote.pwsh_script(command, cwd=cwd, env=env), timeout=timeout)
                 if rc == 255 and self.transport.is_ssh_failure(rc, out):
                     return None, f"error: {t.name}: {self.transport.explain(t, rc, out)}"
                 job.append(redact(out.decode(errors="replace"), self.transport.secrets(t)))
                 job.rc, job.finished = rc, self.clock()
+            elif rc != 0:
+                return None, f"error: {t.name}: {self.transport.explain(t, rc, out)}"
+            else:
+                job.pid = out.decode(errors="replace").strip().splitlines()[-1] if out.strip() else None
         except (SSHError, SecretError, ValueError) as e:
             return None, f"error: {t.name}: {e}"
         job.save()
@@ -217,14 +224,13 @@ class Core:
     def _drain(self, job: Job, until: float) -> None:
         """Copy new output from the target into the local log until the job ends or `until` passes."""
         t = self.load().get(job.target)
-        if t is None or job.rc is not None or not job.posix:
+        if t is None or job.rc is not None or not job.detached:
             return
         while True:
             try:
                 hide = self.transport.secrets(t)  # resolved first: output that can't be redacted is never shown
-                rc_ssh, out = self.transport.exec(
-                    t, "sh -s", stdin=remote.posix_poll(job.id, job.fetched, POLL_CHUNK).encode(), timeout=60
-                )
+                poll = remote.posix_poll if job.posix else remote.pwsh_poll
+                rc_ssh, out = self._script(t, poll(job.id, job.fetched, POLL_CHUNK))
                 rc, data = remote.parse_poll(out) if rc_ssh == 0 else (None, b"")
             except (SSHError, SecretError, ValueError):
                 rc, data, rc_ssh = None, b"", 255
@@ -251,7 +257,7 @@ class Core:
             header = f"status=running job=j:{job.id} dur={dur:.1f}s +{lines} lines"
             return render(header, _grep(new, grep), max_bytes=max_bytes, head=0, tail=20, handle=f"o:{job.id}")
         header = f"exit={job.rc} dur={dur:.1f}s out=o:{job.id}"
-        if job.rc == 124 and job.posix:
+        if job.rc == 124 and job.detached:
             header += " (timed out)"
         return render(header, _grep(new, grep), max_bytes=max_bytes, handle=f"o:{job.id}")
 
@@ -284,10 +290,10 @@ class Core:
             return f"error: no job j:{job_id}"
         if signal:
             t = self.load().get(job.target)
-            if t is None or not job.posix or job.rc is not None:
+            if t is None or not job.detached or job.rc is not None:
                 return f"error: j:{job_id} is not a running job"
             try:
-                rc, out = self.transport.exec(t, "sh -s", stdin=remote.posix_signal(job_id, signal).encode())
+                rc, out = self._script(t, (remote.posix_signal if job.posix else remote.pwsh_signal)(job_id, signal))
             except (SSHError, SecretError, ValueError) as e:
                 return f"error: {e}"
             return f"signal={signal} sent to j:{job_id}" if rc == 0 else f"error: {out.decode(errors='replace')}"

@@ -8,9 +8,9 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from conning import paths, remote
+from conning import audit, notify, paths, remote
 from conning.output import DEFAULT_MAX_BYTES, clamp_max_bytes, render, render_fanout
-from conning.policy import is_allowed, split_command
+from conning.policy import is_allowed, is_safe, split_command
 from conning.secrets import SecretError, redact
 from conning.ssh import SSHError
 from conning.state import Approval, Job, lease_until, new_id, problems
@@ -63,9 +63,18 @@ class Core:
             return "blocked"
         if lease_until(t.name):
             return "run"
-        if is_allowed(policy_argv, t.allow):
+        if is_allowed(policy_argv, t.allow) or (t.safe and is_safe(policy_argv)):
             return "run"
         return "refused" if t.mode == "observe" else "approve"
+
+    def would_ask(self, target: str, cmd: str | None, argv: list[str] | None) -> list[str]:
+        """The targets where this command would wait for approval. No side effects; errors mean none."""
+        try:
+            chosen, err = self._pick(target)
+        except TargetFileError:
+            return []
+        policy_argv = argv if argv is not None else split_command(cmd or "")
+        return [] if err else [t.name for t in chosen if self._decide(t, policy_argv) == "approve"]
 
     # --- targets ------------------------------------------------------------------------------
 
@@ -119,6 +128,9 @@ class Core:
             return err
         policy_argv = argv if argv is not None else split_command(cmd or "")
         decisions = {t.name: self._decide(t, policy_argv) for t in chosen}
+        shown = cmd if cmd is not None else shlex.join(argv or [])
+        for t in chosen:
+            audit.record("run", target=t.name, command=shown, decision=decisions[t.name], cwd=cwd)
         notes = []
         for t in chosen:
             if decisions[t.name] == "blocked":
@@ -129,6 +141,8 @@ class Core:
         if needs:
             a = Approval(id=new_id(), targets=needs, command=cmd, argv=argv, cwd=cwd, timeout=timeout)
             a.save()
+            audit.record("approval", id=a.id, targets=needs, command=shown)
+            notify.approval_waiting(a.id, needs, shown)
             reason = "shell syntax always asks" if policy_argv is None else "not on the allowlist"
             notes.append(
                 f"status=pending_approval id=a:{a.id} targets={','.join(needs)} ({reason}; "
@@ -162,6 +176,9 @@ class Core:
         except (SSHError, SecretError, ValueError) as e:
             return None, f"error: {t.name}: {e}"
         job.save()
+        audit.record("start", target=t.name, job=job.id, command=command)
+        if job.rc is not None:
+            audit.record("exit", target=t.name, job=job.id, rc=job.rc)
         return job, None
 
     def _start_and_wait(self, targets, cmd, argv, cwd, wait, timeout, max_bytes, grep) -> str:
@@ -205,6 +222,7 @@ class Core:
                 job.fetched += len(data)
             if rc is not None and len(data) < POLL_CHUNK:
                 job.rc, job.finished = rc, self.clock()
+                audit.record("exit", target=job.target, job=job.id, rc=rc)
             job.save()
             if job.rc is not None or self.clock() >= until:
                 return
@@ -311,6 +329,7 @@ class Core:
             return f"error: unknown target {name} (see targets)"
         if t.status == "pending":
             return f"error: {name} is pending; human runs: conn approve {name}"
+        audit.record("read-file", target=name, path=path)
         try:
             hide = self.transport.secrets(t)
             if t.os == "windows":
@@ -328,6 +347,11 @@ class Core:
     # --- transfer -----------------------------------------------------------------------------
 
     def transfer(self, source: str, dest: str) -> str:
+        result = self._transfer(source, dest)
+        audit.record("transfer", source=source, dest=dest, result=result.splitlines()[0][:200])
+        return result
+
+    def _transfer(self, source: str, dest: str) -> str:
         src_kind, _, src_path = source.partition(":")
         dst_kind, _, dst_path = dest.partition(":")
         if not src_path or not dst_path:

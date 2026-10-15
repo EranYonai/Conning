@@ -20,6 +20,7 @@ needs_sh = pytest.mark.skipif(sys.platform == "win32" or not shutil.which("sh"),
 def _state(tmp_path, monkeypatch):
     """Job output and approvals never land in the real state dir."""
     monkeypatch.setenv("CONNING_STATE", str(tmp_path / "conning-state"))
+    monkeypatch.setenv("CONNING_NOTIFY", "0")  # no desktop pop-ups from test runs
 
 
 @pytest.fixture

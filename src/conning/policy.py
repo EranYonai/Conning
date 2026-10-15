@@ -9,6 +9,11 @@ so allowing `systemctl status` must never allow `systemctl stop`.
 
 Wrappers that can run anything (`sh -c`, `python -c`, `sudo`, `env`, ...) are never matched
 and never remembered, and a command string containing shell syntax always asks.
+
+Every target also allows a built-in list of read-only commands (D39), unless it sets
+`safe = false`. Each has its own argument check, because a word prefix is not enough there:
+`hostname` prints the name but `hostname x` sets it, and `ip addr` shows but `ip addr add` changes.
+Commands that print file contents (`cat`, `head`, `tail`) are not on it; the `read` tool reads files.
 """
 
 import shlex
@@ -86,3 +91,158 @@ def remembered_rule(argv: list[str] | None) -> tuple[str, ...] | None:
     if not argv or program(argv[0]) in WRAPPERS:
         return None
     return words(argv)[:2]
+
+
+# --- the built-in read-only list ----------------------------------------------------------------
+
+
+def _any(rest: list[str]) -> bool:
+    return True
+
+
+def _only_flags(*allowed: str):
+    def check(rest: list[str]) -> bool:
+        return all(a in allowed for a in rest)
+
+    return check
+
+
+def _without(*forbidden: str):
+    def check(rest: list[str]) -> bool:
+        return not any(a == f or a.startswith(f + "=") for a in rest for f in forbidden)
+
+    return check
+
+
+IP_OBJECTS = {"a", "addr", "address", "l", "link", "r", "route", "n", "neigh", "neighbour", "neighbor"}
+IP_FLAGS = {
+    "-4",
+    "-6",
+    "-br",
+    "-brief",
+    "-c",
+    "-color",
+    "-s",
+    "-stats",
+    "-d",
+    "-details",
+    "-o",
+    "-oneline",
+    "-j",
+    "-json",
+    "-p",
+    "-pretty",
+}
+
+
+def _ip(rest: list[str]) -> bool:
+    """`ip addr`, `ip -br link show`: only show/list, only display flags (`-batch` would run a file)."""
+    flags = [a for a in rest if a.startswith("-")]
+    plain = [a for a in rest if not a.startswith("-")]
+    if any(f not in IP_FLAGS for f in flags) or not plain or plain[0] not in IP_OBJECTS:
+        return False
+    return len(plain) == 1 or plain[1] in ("show", "list", "ls")
+
+
+SYSTEMCTL_READ = {
+    "status",
+    "show",
+    "cat",
+    "is-active",
+    "is-enabled",
+    "is-failed",
+    "list-units",
+    "list-unit-files",
+    "list-timers",
+}
+SYSTEMCTL_FLAGS = {
+    "--no-pager",
+    "-l",
+    "--full",
+    "-a",
+    "--all",
+    "--plain",
+    "--no-legend",
+    "--user",
+    "--value",
+    "-q",
+    "--quiet",
+}
+SYSTEMCTL_VALUE_FLAGS = ("-t", "--type", "--state", "-n", "--lines", "-o", "--output", "-p", "--property")
+
+
+def _systemctl(rest: list[str]) -> bool:
+    """Read verbs only, and no -H/--host or -M: those reach other machines."""
+    plain = [a for a in rest if not a.startswith("-")]
+    flags = [a for a in rest if a.startswith("-")]
+    ok_flag = all(f in SYSTEMCTL_FLAGS or f.split("=")[0] in SYSTEMCTL_VALUE_FLAGS for f in flags)
+    return ok_flag and bool(plain) and plain[0] in SYSTEMCTL_READ
+
+
+SAFE: dict[str, object] = {
+    # POSIX
+    "uname": _any,
+    "hostname": _only_flags(
+        "-f",
+        "--fqdn",
+        "--long",
+        "-s",
+        "--short",
+        "-d",
+        "--domain",
+        "-i",
+        "--ip-address",
+        "-I",
+        "--all-ip-addresses",
+        "-A",
+        "--all-fqdns",
+        "-a",
+        "--alias",
+    ),
+    "uptime": _any,
+    "df": _any,
+    "free": _any,
+    "id": _any,
+    "whoami": _any,
+    "ps": _any,
+    "ls": _any,
+    "pwd": _any,
+    "nproc": _any,
+    "lscpu": _any,
+    "lsblk": _any,
+    "ip": _ip,
+    "systemctl": _systemctl,
+    "journalctl": _without(
+        "--vacuum-size",
+        "--vacuum-time",
+        "--vacuum-files",
+        "--rotate",
+        "--flush",
+        "--sync",
+        "--relinquish-var",
+        "--smart-relinquish-var",
+        "--setup-keys",
+        "--update-catalog",
+    ),
+    # Windows (PowerShell); names are matched lower-case
+    "ipconfig": _only_flags("/all"),
+    "get-computerinfo": _any,
+    "get-process": _any,
+    "get-service": _any,
+    "get-netipaddress": _any,
+    "get-volume": _any,
+    "get-hotfix": _any,
+}
+
+
+def is_safe(argv: list[str] | None) -> bool:
+    """On the built-in read-only list. The program must be a bare name, found on the target's PATH:
+    `/tmp/x/uname` could be anything the agent uploaded."""
+    if not argv or "/" in argv[0] or "\\" in argv[0]:
+        return False
+    check = SAFE.get(program(argv[0]))
+    return check is not None and check(argv[1:])
+
+
+def safe_names() -> str:
+    return ", ".join(SAFE)

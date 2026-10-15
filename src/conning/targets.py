@@ -30,6 +30,7 @@ KEYS = {
     "allow",
     "inject",
     "status",
+    "safe",
 }
 
 
@@ -54,6 +55,7 @@ class Target:
     allow: tuple[tuple[str, ...], ...] = ()
     inject: dict[str, str] = field(default_factory=dict)
     status: str = "active"
+    safe: bool = True  # the built-in read-only commands run without asking (D39)
 
 
 def load_targets(path: Path) -> dict[str, Target]:
@@ -88,6 +90,8 @@ def _parse(name: str, table: object, path: Path) -> Target:
         isinstance(rule, list) and rule and all(isinstance(w, str) and w for w in rule) for rule in allow
     ):
         raise TargetFileError(f"{where}: 'allow' must be a list of non-empty word lists, e.g. [[\"pytest\"]]")
+    if not isinstance(table.get("safe", True), bool):
+        raise TargetFileError(f"{where}: 'safe' must be true or false")
     inject = table.get("inject", {})
     if not isinstance(inject, dict) or not all(isinstance(v, str) for v in inject.values()):
         raise TargetFileError(f"{where}: 'inject' must map env names to secret references")
@@ -107,6 +111,7 @@ def _parse(name: str, table: object, path: Path) -> Target:
         allow=tuple(tuple(rule) for rule in allow),
         inject=dict(inject),
         status=table.get("status", "active"),
+        safe=table.get("safe", True),
     )
 
 
@@ -159,7 +164,20 @@ def dump_targets(targets: dict[str, Target]) -> str:
     out = ["# Conning targets. Safe to read: this file holds no secrets, only references to them.\n"]
     for t in targets.values():
         out.append(f"[{t.name}]")
-        for key in ("host", "port", "user", "auth", "secret", "key", "hostkey", "os", "shell", "mode", "status"):
+        for key in (
+            "host",
+            "port",
+            "user",
+            "auth",
+            "secret",
+            "key",
+            "hostkey",
+            "os",
+            "shell",
+            "mode",
+            "status",
+            "safe",
+        ):
             value = getattr(t, key)
             if value is not None and (key in ("host", "user") or value != getattr(defaults, key)):
                 out.append(f"{key} = {_toml_value(value)}")

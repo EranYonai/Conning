@@ -70,14 +70,15 @@ If approving fails, the target stays pending and `conn ls` says why, e.g. `mode=
 ## 4. Approvals and "always allow"
 
 ```sh
-conn run lab uname -a
+conn run lab uname -a        # expect: exit=0 right away: uname is on the built-in read-only list
+conn run lab date
 ```
-Expect: `status=pending_approval id=a:<id> ...`. Then:
+Expect: `status=pending_approval id=a:<id> ...` (`date` can set the clock, so it isn't on the list). Then:
 
 ```sh
-conn approve a:<id>          # type e (always allow 'uname'); it then prints exit=0 and the uname line
+conn approve a:<id>          # type e (always allow 'date'); it then prints exit=0 and the date
 conn read a:<id>             # what the agent sees: the same result
-conn run lab uname -r        # expect: exit=0 right away, no approval (the rule matched)
+conn run lab date -u         # expect: exit=0 right away, no approval (the rule matched)
 ```
 
 ## 5. Lease, long jobs, signals, timeouts
@@ -164,6 +165,26 @@ EOF
 Expect: the four tools, then the same text the CLI printed.
 
 To try it from a real agent: `claude mcp add conning-dev -e CONNING_HOME=$CONNING_HOME -e CONNING_STATE=$CONNING_STATE -- uv run --directory $PWD -q conn mcp`.
+
+## 11. M2: watch, allow, doctor, approvals in the client
+
+```sh
+conn doctor                  # expect: ok lines; warn lines name anything to fix
+conn watch                   # leave this running in a second terminal (same CONNING_HOME/STATE exports)
+conn run lab touch /tmp/x    # back in the first: pending; watch prints ASK and prompts you there
+conn allow lab make          # type y
+conn allow lab               # expect: lab: the built-in read-only list; rules: 'make' (and any "always")
+conn run lab df -h /         # expect: exit=0 right away (built-in list); watch shows run, start, exit, output
+conn deny lab make           # expect: 'make' now asks again on lab
+```
+
+Approvals in the client, with a real agent: `claude mcp add conning-dev -e CONNING_HOME=$CONNING_HOME
+-e CONNING_STATE=$CONNING_STATE -- uv run --directory $PWD -q conn mcp`, then ask it
+to run `hostname` on lab. Expect a prompt in the client with once / always / deny, and the result in
+the same reply after you pick. On macOS and Linux a desktop notification appears too.
+
+Expect `grep -c . $CONNING_STATE/audit.jsonl` to count every step above, and `conn doctor` to warn if
+you edit a line of that file.
 
 ## Clean up
 

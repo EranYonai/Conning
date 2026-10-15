@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.0 (unreleased)
+
+- Approve commands where you are: in the agent client (MCP elicitation, both protocol versions; on by
+  default, `conn mcp --no-approve-in-client` turns it off), in `conn watch`, or with `conn approve`. A desktop notification
+  says when a command is waiting (`CONNING_NOTIFY=0` turns it off).
+- `conn watch`: every command, decision and job exit as it happens, new job output, and approval prompts.
+- Audit log in the state dir (`audit.jsonl`), hash-chained; `conn doctor` reports edits.
+- Built-in read-only list: `uname`, `hostname`, `df`, `ps`, `ls`, `ip addr`, `systemctl status`, `journalctl`,
+  `Get-Process` and more run without asking, checked so changing forms still ask (`safe = false` opts out).
+- `conn allow <target> [words]` lists or adds allow rules; `conn deny <target> <words>` removes one.
+- `conn doctor` checks the config and state dirs, ssh tools, keychain, secret sources, pinned keys and leases.
+
 ## 0.1.0 (unreleased)
 
 - M1: commands run over OpenSSH with a generated per-target config (pinned host key, no forwarding,

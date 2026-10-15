@@ -42,7 +42,7 @@ def test_audit_appends_and_reads_from_an_offset():
 def test_audit_waits_for_partial_lines_and_skips_junk():
     path = audit.log_file()
     path.parent.mkdir(parents=True)
-    path.write_text('not json\n{"event":"run","ts":1}\n{"event":"ha')
+    path.write_bytes(b'not json\n{"event":"run","ts":1}\n{"event":"ha')  # bytes: no CRLF on Windows
     entries, offset = audit.read_from(0)
     assert [e["event"] for e in entries] == ["run"] and offset == len('not json\n{"event":"run","ts":1}\n')
 

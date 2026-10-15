@@ -40,6 +40,28 @@ The MCP server needs no install at all:
 claude mcp add conning -- uvx conning mcp
 ```
 
+### Or run the server in Docker
+
+```sh
+docker run -i --rm --network host \
+  -v ~/.config/conning:/conning \
+  -v "$SSH_AUTH_SOCK":/ssh-agent -e SSH_AUTH_SOCK=/ssh-agent \
+  ghcr.io/eranyonai/conning:latest
+```
+
+The image carries Python, the OpenSSH client and Conning, and nothing else; it runs as a non-root
+user and keeps targets, pinned host keys and job output on the `/conning` volume. Two things stay on
+your machine (D46):
+
+- **Approving.** `conn add`, `conn approve`, `conn lease` and `conn allow` need your terminal. Install
+  the CLI on the host and point it at the same folder: `CONNING_HOME=~/.config/conning conn approve a:1`.
+  Approving in the agent client works from the container as usual.
+- **Secrets.** The OS keychain is not reachable from a container, so use `env:` or `op://`
+  references, or forward your ssh-agent as above and use a key. `docker run --rm ... conning doctor`
+  checks the rest.
+
+Targets on a lab LAN or VPN need `--network host` (Linux) or a route the container can use.
+
 ## The agent's four tools
 
 | Tool | What it does |

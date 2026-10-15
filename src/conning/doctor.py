@@ -31,6 +31,8 @@ def doctor(io: IO) -> int:
         io.say(f"{level:<5}{text}")
 
     report("ok", f"conning {__version__}")
+    if secrets.in_container():
+        report("ok", "running in a container: keep /conning on a volume, and approve from the host")
     config, state = paths.config_dir(), paths.state_dir()
     if _writable(config):
         report("ok", f"config {config}")
@@ -76,15 +78,18 @@ def doctor(io: IO) -> int:
         ref for t in targets.values() for ref in t.inject.values()
     ]
     if any(r.startswith("keychain:") for r in refs):
-        try:
-            secrets._keyring().get_password(secrets.KEYCHAIN_SERVICE, "conning-doctor-probe")
-            report("ok", "OS keychain reachable")
-        except Exception as e:  # noqa: BLE001 - every keyring backend fails differently
-            report(
-                "FAIL",
-                f"OS keychain not reachable here ({type(e).__name__}: {e}); run Conning outside the sandbox, "
-                "e.g. as the MCP server your agent client starts",
-            )
+        if secrets.in_container():
+            report("FAIL", f"a secret uses keychain: but {secrets.NO_KEYCHAIN}")
+        else:
+            try:
+                secrets._keyring().get_password(secrets.KEYCHAIN_SERVICE, "conning-doctor-probe")
+                report("ok", "OS keychain reachable")
+            except Exception as e:  # noqa: BLE001 - every keyring backend fails differently
+                report(
+                    "FAIL",
+                    f"OS keychain not reachable here ({type(e).__name__}: {e}); run Conning outside the sandbox, "
+                    "e.g. as the MCP server your agent client starts",
+                )
     if any(r.startswith("op://") for r in refs) and not shutil.which("op"):
         report("FAIL", "a secret uses op:// but the 1Password CLI (op) is not installed")
     for ref in sorted({r for r in refs if r.startswith("env:")}):

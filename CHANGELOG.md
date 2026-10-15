@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- The MCP server ships as a container image too: `ghcr.io/eranyonai/conning` (amd64 and arm64),
+  built from the OpenSSH client plus Conning, running as a non-root user, with `/conning` as the
+  volume for targets, pinned keys and job output. `keychain:` secrets are refused there with a
+  message naming `env:`, `op://` and ssh-agent forwarding, and `conn doctor` says what a container
+  changes. Approving stays on the host, sharing the same folder.
+
 ## 0.2.0 (2026-10-15)
 
 - Approve commands where you are: in the agent client (MCP elicitation, both protocol versions; on by

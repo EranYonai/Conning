@@ -182,6 +182,7 @@ def test_runtime_dir_is_private(fake_ssh):
 
 def test_runtime_dir_prefers_short_tmp_over_long_temp_dir(monkeypatch, tmp_path):
     """Seen on macOS: /var/folders/... plus the socket name passed the 104-byte limit."""
+    monkeypatch.setattr(ssh, "IS_WINDOWS_HOST", False)
     short = tmp_path / "t"
     short.mkdir()
     monkeypatch.setattr(ssh, "SHORT_TMP", short)
@@ -193,6 +194,7 @@ def test_runtime_dir_prefers_short_tmp_over_long_temp_dir(monkeypatch, tmp_path)
 
 
 def test_control_dir_is_dropped_when_the_socket_path_would_be_too_long(fake_ssh, monkeypatch):
+    monkeypatch.setattr(ssh, "IS_WINDOWS_HOST", False)
     fits = len(str(ssh.runtime_dir())) + ssh.CONTROL_SUFFIX
     monkeypatch.setattr(ssh, "SOCKET_PATH_MAX", fits)
     assert ssh.control_dir() == ssh.runtime_dir()

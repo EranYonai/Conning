@@ -1,6 +1,6 @@
 [project]
 name = "conning"
-version = "0.0.1"
+version = "0.2.0"
 description = "A control room for your agent's test machines: an MCP server and CLI that run commands on remote targets without the agent ever seeing a secret."
 readme = "README.md"
 license = "Apache-2.0"

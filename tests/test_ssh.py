@@ -15,6 +15,7 @@ KEY = base64.b64encode(b"fake-host-key").decode()
 def fake_ssh(monkeypatch, tmp_path):
     monkeypatch.setattr(ssh.shutil, "which", lambda name: f"/usr/bin/{name}")
     monkeypatch.setattr(ssh.tempfile, "gettempdir", lambda: str(tmp_path / "tmp"))
+    monkeypatch.setattr(ssh, "SHORT_TMP", tmp_path / "tmp")
     (tmp_path / "tmp").mkdir()
 
 
@@ -177,3 +178,33 @@ def test_no_ssh_hint_spots_windows(monkeypatch):
 def test_runtime_dir_is_private(fake_ssh):
     d = ssh.runtime_dir()
     assert d.is_dir() and d.name.startswith("conning-")
+
+
+def test_runtime_dir_prefers_short_tmp_over_long_temp_dir(monkeypatch, tmp_path):
+    """Seen on macOS: /var/folders/... plus the socket name passed the 104-byte limit."""
+    short = tmp_path / "t"
+    short.mkdir()
+    monkeypatch.setattr(ssh, "SHORT_TMP", short)
+    monkeypatch.setattr(ssh.tempfile, "gettempdir", lambda: str(tmp_path / ("x" * 60)))
+    assert ssh.runtime_dir().parent == short
+    monkeypatch.setattr(ssh, "SHORT_TMP", tmp_path / "missing")
+    (tmp_path / ("x" * 60)).mkdir()
+    assert ssh.runtime_dir().parent == tmp_path / ("x" * 60)
+
+
+def test_control_dir_is_dropped_when_the_socket_path_would_be_too_long(fake_ssh, monkeypatch):
+    fits = len(str(ssh.runtime_dir())) + ssh.CONTROL_SUFFIX
+    monkeypatch.setattr(ssh, "SOCKET_PATH_MAX", fits)
+    assert ssh.control_dir() == ssh.runtime_dir()
+    monkeypatch.setattr(ssh, "SOCKET_PATH_MAX", fits - 1)
+    assert ssh.control_dir() is None
+    monkeypatch.setattr(ssh, "IS_WINDOWS_HOST", True)
+    assert ssh.control_dir() is None
+
+
+@pytest.mark.skipif(not hasattr(ssh.os, "getuid"), reason="POSIX ownership check")
+def test_runtime_dir_refuses_a_shared_dir(fake_ssh):
+    d = ssh.runtime_dir()
+    d.chmod(0o777)
+    with pytest.raises(ssh.SSHError, match="not a private directory"):
+        ssh.runtime_dir()

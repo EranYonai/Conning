@@ -11,6 +11,7 @@ import getpass
 import os
 import shutil
 import socket
+import stat
 import subprocess
 import sys
 import tempfile
@@ -39,12 +40,30 @@ def host_key_alias(name: str) -> str:
     return f"conning-{name}"
 
 
+SHORT_TMP = Path("/tmp")  # macOS's per-user temp dir (/var/folders/...) is too long for socket paths
+SOCKET_PATH_MAX = 104  # sun_path on macOS and BSD (108 on Linux)
+CONTROL_SUFFIX = 58  # ssh appends "/" + %C (40 hex chars) + a 17-char temporary suffix
+
+
 def runtime_dir() -> Path:
-    """Short-path dir for control sockets and the askpass helper (sockets have a ~100 char limit)."""
+    """A private, short dir for control sockets and the askpass helper."""
     uid = os.getuid() if hasattr(os, "getuid") else getpass.getuser()
-    d = Path(tempfile.gettempdir()) / f"conning-{uid}"
+    base = SHORT_TMP if not IS_WINDOWS_HOST and SHORT_TMP.is_dir() else Path(tempfile.gettempdir())
+    d = base / f"conning-{uid}"
     d.mkdir(mode=0o700, exist_ok=True)
+    if hasattr(os, "getuid"):  # /tmp is shared: refuse a dir someone else made or can write to
+        st = d.lstat()
+        if stat.S_ISLNK(st.st_mode) or st.st_uid != os.getuid() or st.st_mode & 0o077:
+            raise SSHError(f"{d} is not a private directory owned by you; remove it and retry")
     return d
+
+
+def control_dir() -> Path | None:
+    """Where connection-sharing sockets go, or None to run without connection reuse."""
+    if IS_WINDOWS_HOST:
+        return None
+    d = runtime_dir()
+    return d if len(str(d)) + CONTROL_SUFFIX <= SOCKET_PATH_MAX else None
 
 
 def config_text(t: Target, known_hosts: Path, control_dir: Path | None) -> str:
@@ -97,7 +116,7 @@ def connect(t: Target) -> Connection:
     (home / "ssh").mkdir(parents=True, exist_ok=True)
     known_hosts = home / "known_hosts"
     known_hosts.touch(exist_ok=True)
-    control = None if IS_WINDOWS_HOST else runtime_dir()
+    control = control_dir()
     conf = home / "ssh" / f"{t.name}.conf"
     conf.write_text(config_text(t, known_hosts, control), encoding="utf-8")
     env = dict(os.environ)

@@ -7,6 +7,7 @@ as pending and does nothing until a human runs `conn approve <name>`.
 
 import fnmatch
 import getpass
+import re
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -16,10 +17,11 @@ from conning import paths, ssh
 from conning.core import Core
 from conning.policy import remembered_rule, split_command
 from conning.secrets import SecretError, store_in_keychain
-from conning.state import Approval, grant_lease
+from conning.state import Approval, grant_lease, set_problem
 from conning.targets import AUTHS, MODES, NAME_RE, Target, TargetFileError, load_targets, save_targets
 
 MAX_LEASE_MINUTES = 60
+APPROVE_WAIT = 10  # seconds `conn approve a:<id>` waits for the command before handing back its job id
 
 
 class IO(Protocol):
@@ -138,31 +140,37 @@ def add(
     return _enroll(core, io, t)
 
 
+def _stays_pending(io: IO, t: Target, message: str, reason: str) -> int:
+    """Tell the human, and record a host-free reason that `targets` shows next to the pending target."""
+    io.say(message)
+    set_problem(t.name, re.sub(rf"(?<![\w.-]){re.escape(t.host)}(?![\w.-])", "<host>", reason))
+    return 1
+
+
 def _enroll(core: Core, io: IO, t: Target) -> int:
     """Pin the host key the human confirms, probe OS and shell, and make the target live."""
     try:
         keys = ssh.scan_host_keys(t.host, t.port)
     except ssh.SSHError as e:
-        io.say(f"error: {e}")
-        return 1
+        return _stays_pending(io, t, f"error: {e}", str(e))
     if not keys:
-        io.say(ssh.no_ssh_hint(t) if not ssh.port_open(t.host, t.port) else f"{t.name}: no host keys offered")
-        return 1
+        if not ssh.port_open(t.host, t.port):
+            return _stays_pending(io, t, ssh.no_ssh_hint(t), "no SSH server answered")
+        return _stays_pending(io, t, f"{t.name}: no host keys offered", "no host keys offered")
     io.say(f"{t.name}: {t.user}@{t.host}:{t.port}  auth={t.auth}" + (f"  secret={t.secret}" if t.secret else ""))
     for key_type, fp, _ in keys:
         io.say(f"  host key {key_type:<20} {fp}")
     if io.ask("pin these host keys and make the target live? [y/N] ").strip().lower() not in ("y", "yes"):
-        io.say("not pinned; the target stays pending")
-        return 1
+        return _stays_pending(io, t, "not pinned; the target stays pending", "host key not confirmed")
     ssh.pin_host_keys(t.name, keys)
     t = replace(t, hostkey=keys[0][1], status="active")
     os_name, shell, problem = probe(core, t)
     if problem:
         _save(replace(t, status="pending"))
-        io.say(f"error: {problem}")
-        return 1
+        return _stays_pending(io, t, f"error: {problem}", f"login check failed: {problem}")
     t = replace(t, os=os_name, shell=shell)
     _save(t)
+    set_problem(t.name, None)
     io.say(f"{t.name} is live: {os_name} {shell} mode={t.mode}")
     return 0
 
@@ -188,7 +196,11 @@ def approve(core: Core, io: IO, what: str, *, always: bool = False) -> int:
     if (code := _need_tty(io, "approving")) is not None:
         return code
     if what.startswith("a:"):
-        return approve_command(io, what[2:], always=always)
+        code = approve_command(io, what[2:], always=always)
+        approved = Approval.load(what[2:])
+        if code == 0 and approved is not None and approved.status == "approved":
+            io.say(core.read(what, wait=APPROVE_WAIT))  # start it and show the result here too
+        return code
     return approve_target(core, io, what)
 
 
@@ -232,7 +244,7 @@ def approve_command(io: IO, approval_id: str, *, always: bool = False) -> int:
         io.say(f"always allowing '{' '.join(rule)}' on {', '.join(a.targets)}")
     a.status = "approved"
     a.save()
-    io.say(f"approved a:{a.id}; the agent picks it up with read a:{a.id}")
+    io.say(f"approved a:{a.id}; the agent sees the result with read a:{a.id}")
     return 0
 
 

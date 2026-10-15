@@ -414,7 +414,7 @@ def test_targets_check(core, transport):
     transport.exec = exec_
     out = core.targets(check=True)
     assert "reach=ok" in out and "down" in out and "reach=unreachable" in out and "reach=pending" in out
-    assert core.targets("tag:none") == "no targets (add one with: conn add <name>)"
+    assert core.targets("tag:none") == "no target matches 'tag:none' (conn targets lists all)"
 
 
 def test_helpers():

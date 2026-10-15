@@ -16,6 +16,12 @@ from conning.targets import Target, save_targets
 needs_sh = pytest.mark.skipif(sys.platform == "win32" or not shutil.which("sh"), reason="needs a POSIX sh")
 
 
+@pytest.fixture(autouse=True)
+def _state(tmp_path, monkeypatch):
+    """Job output and approvals never land in the real state dir."""
+    monkeypatch.setenv("CONNING_STATE", str(tmp_path / "conning-state"))
+
+
 @pytest.fixture
 def home(tmp_path, monkeypatch):
     path = tmp_path / "conning-home"

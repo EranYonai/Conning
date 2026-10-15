@@ -112,12 +112,11 @@ class Connection:
 def connect(t: Target) -> Connection:
     """Prepare (not open) a connection: write the generated config and resolve the password if any."""
     ssh = require_ssh()
-    home = paths.config_dir()
-    (home / "ssh").mkdir(parents=True, exist_ok=True)
-    known_hosts = home / "known_hosts"
-    known_hosts.touch(exist_ok=True)
+    known_hosts = paths.config_dir() / "known_hosts"  # read only here; written when a human pins keys
+    generated = paths.state_dir() / "ssh"
+    generated.mkdir(parents=True, exist_ok=True)
     control = control_dir()
-    conf = home / "ssh" / f"{t.name}.conf"
+    conf = generated / f"{t.name}.conf"
     conf.write_text(config_text(t, known_hosts, control), encoding="utf-8")
     env = dict(os.environ)
     used: list[str] = []

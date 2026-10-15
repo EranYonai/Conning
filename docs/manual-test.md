@@ -2,7 +2,7 @@
 
 A clean-clone check of a branch against a real SSH server, from a Linux or macOS workstation (WSL works
 too). It takes about ten minutes. Every step lists what you should see. Your real Conning config is
-never touched: everything lives in a throwaway `CONNING_HOME`.
+never touched: everything lives in a throwaway `CONNING_HOME` (config) and `CONNING_STATE` (job output).
 
 You need `git`, [`uv`](https://docs.astral.sh/uv/) and the OpenSSH client (`ssh`, `scp`, `ssh-keygen`,
 `ssh-keyscan`).
@@ -15,6 +15,7 @@ uv sync
 uv run pytest --cov=conning -q     # expect: all passed, TOTAL ... 100% (Linux/macOS)
 uv run ruff check                  # expect: All checks passed!
 export CONNING_HOME=$(mktemp -d)   # throwaway config for this test
+export CONNING_STATE=$CONNING_HOME/state
 alias conn='uv run -q conn'
 ```
 
@@ -60,45 +61,46 @@ Expect: `lab saved as pending. It does nothing until a human runs: conn approve 
 makes it behave like an agent with no terminal.)
 
 ```sh
-conn run lab -- uname -a     # expect: blocked  lab  (target is pending; ...)
+conn run lab uname -a        # expect: blocked  lab  (target is pending; ...)
 conn approve lab             # shows the host key fingerprint; type y
 conn ls --check              # expect: lab  linux  bash  tags=demo  mode=ask  reach=ok
 ```
+If approving fails, the target stays pending and `conn ls` says why, e.g. `mode=pending (login check failed: ...)`.
 
 ## 4. Approvals and "always allow"
 
 ```sh
-conn run lab -- uname -a
+conn run lab uname -a
 ```
 Expect: `status=pending_approval id=a:<id> ...`. Then:
 
 ```sh
-conn approve a:<id>          # type e (always allow 'uname')
-conn read a:<id>             # expect: approved ..., then exit=0 and the uname line
-conn run lab -- uname -r     # expect: exit=0 right away, no approval (the rule matched)
+conn approve a:<id>          # type e (always allow 'uname'); it then prints exit=0 and the uname line
+conn read a:<id>             # what the agent sees: the same result
+conn run lab uname -r        # expect: exit=0 right away, no approval (the rule matched)
 ```
 
 ## 5. Lease, long jobs, signals, timeouts
 
 ```sh
 conn lease lab --minutes 10  # type y; the agent may now run anything on lab for 10 minutes
-conn run lab --wait 0 -- sh -c 'for i in 1 2 3 4 5 6; do echo tick $i; sleep 1; done'
+conn run lab --wait 0 sh -c 'for i in 1 2 3 4 5 6; do echo tick $i; sleep 1; done'
 ```
 Expect: `status=running job=j:<job> ...`. Then:
 
 ```sh
 conn read j:<job> --wait 1   # expect: status=running with only the new tick lines
 conn read j:<job> --wait 15  # expect: exit=0 with the remaining ticks, none repeated
-conn run lab --wait 0 -- sleep 300
+conn run lab --wait 0 sleep 300
 conn read j:<job2> --signal TERM     # expect: signal=TERM sent to j:<job2>
 conn read j:<job2> --wait 5          # expect: exit=143
-conn run lab --timeout 2 -- sleep 30 # expect: exit=124 ... (timed out)
+conn run lab --timeout 2 sleep 30 # expect: exit=124 ... (timed out)
 ```
 
 ## 6. Output cap and paging
 
 ```sh
-conn run lab -- seq 1 100000         # expect: header (100000 lines, ...; showing 20+60), head, marker, tail
+conn run lab seq 1 100000         # expect: header (100000 lines, ...; showing 20+60), head, marker, tail
 conn read o:<out> --range 500-503    # expect: 500 to 503
 conn read o:<out> --grep '^9999[0-9]$'
 conn read lab:/etc/os-release --range 1-2   # expect: file=lab:/etc/os-release lines=1-2 untrusted
@@ -118,9 +120,9 @@ cmp /tmp/conning-blob.bin /tmp/conning-blob.back && echo identical
 ```sh
 printf 'inject = { DEMO_TOKEN = "env:DEMO_TOKEN" }\n' >> $CONNING_HOME/targets.toml
 export DEMO_TOKEN=s3cret-demo-token
-conn run lab -- sh -c 'echo plain=$DEMO_TOKEN; printf %s "$DEMO_TOKEN" | base64'
+conn run lab sh -c 'echo plain=$DEMO_TOKEN; printf %s "$DEMO_TOKEN" | base64'
 ```
-Expect: `plain=[REDACTED]` and `[REDACTED]`. Then `grep -r s3cret $CONNING_HOME` finds nothing.
+Expect: `plain=[REDACTED]` and `[REDACTED]`. Then `grep -r s3cret $CONNING_HOME` finds nothing (that covers the state dir too).
 
 ```sh
 unset DEMO_TOKEN
@@ -130,12 +132,12 @@ conn read lab:/etc/hostname          # expect: error: secret env:DEMO_TOKEN: env
 ## 9. A changed host key is a hard fail (option B only)
 
 ```sh
-ssh -O exit -F $CONNING_HOME/ssh/lab.conf conning-target 2>/dev/null   # close the reused connection
+ssh -O exit -F $CONNING_STATE/ssh/lab.conf conning-target 2>/dev/null   # close the reused connection
 kill $(cat $S/sshd.pid); rm $S/hostkey*; ssh-keygen -q -t ed25519 -N '' -f $S/hostkey
 $(command -v sshd || echo /usr/sbin/sshd) -f $S/sshd_config -E $S/log
-conn run lab -- uname -s     # expect: error: lab: host key does not match the pinned key ...
+conn run lab uname -s     # expect: error: lab: host key does not match the pinned key ...
 conn approve lab             # re-pin: shows the new fingerprint; type y
-conn run lab -- uname -s     # expect: exit=0
+conn run lab uname -s     # expect: exit=0
 ```
 
 ## 10. The MCP server
@@ -161,7 +163,7 @@ EOF
 ```
 Expect: the four tools, then the same text the CLI printed.
 
-To try it from a real agent: `claude mcp add conning-dev -e CONNING_HOME=$CONNING_HOME -- uv run --directory $PWD -q conn mcp`.
+To try it from a real agent: `claude mcp add conning-dev -e CONNING_HOME=$CONNING_HOME -e CONNING_STATE=$CONNING_STATE -- uv run --directory $PWD -q conn mcp`.
 
 ## Clean up
 

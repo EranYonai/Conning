@@ -9,6 +9,9 @@ from mcp.server.mcpserver import MCPServer
 from conning import __version__
 from conning.core import Core
 from conning.output import DEFAULT_MAX_BYTES
+from conning.secrets import SecretError
+from conning.ssh import SSHError
+from conning.targets import TargetFileError
 
 INSTRUCTIONS = """\
 Conning runs commands on remote test machines ("targets") for you. You never see their
@@ -19,6 +22,14 @@ return status=pending_approval id=a:<id>; poll it with `read` while the human de
 `conn` CLI (see README) can propose new targets; they stay pending until the human approves them."""
 
 
+def _safe(call) -> str:
+    """Tool results are text: a file or secret problem becomes one error line, not a protocol error."""
+    try:
+        return call()
+    except (OSError, TargetFileError, SecretError, SSHError) as e:
+        return f"error: {e}"
+
+
 def build_server(core: Core | None = None) -> MCPServer:
     core = core or Core()
     server = MCPServer(name="conning", instructions=INSTRUCTIONS, version=__version__)
@@ -26,7 +37,7 @@ def build_server(core: Core | None = None) -> MCPServer:
     @server.tool()
     def targets(filter: str | None = None, check: bool = False) -> str:
         """List targets (name, os, shell, tags, mode). filter: 'tag:<tag>' or names. check: probe reachability."""
-        return core.targets(filter, check)
+        return _safe(lambda: core.targets(filter, check))
 
     @server.tool()
     def run(
@@ -41,7 +52,7 @@ def build_server(core: Core | None = None) -> MCPServer:
     ) -> str:
         """Run cmd (string) or argv on a target, a comma list, or tag:<tag>. Returns exit code first.
         Still running after `wait` s (0 = return at once) -> a job id to `read`. Raise max_bytes only when needed."""
-        return core.run(target, cmd, argv, cwd, wait, timeout, max_bytes, grep)
+        return _safe(lambda: core.run(target, cmd, argv, cwd, wait, timeout, max_bytes, grep))
 
     @server.tool()
     def read(
@@ -54,11 +65,11 @@ def build_server(core: Core | None = None) -> MCPServer:
     ) -> str:
         """Page j:<job> (only new lines; wait = long-poll seconds), o:<output> by range/grep, a:<approval>,
         or <target>:<path>. signal: INT|TERM|KILL stops a job."""
-        return core.read(id, wait, range, grep, signal, max_bytes)
+        return _safe(lambda: core.read(id, wait, range, grep, signal, max_bytes))
 
     @server.tool()
     def transfer(source: str, dest: str) -> str:
         """Copy a file or directory between local:<path> and <target>:<path>. Files are verified by sha256."""
-        return core.transfer(source, dest)
+        return _safe(lambda: core.transfer(source, dest))
 
     return server

@@ -13,7 +13,7 @@ from conning.output import DEFAULT_MAX_BYTES, clamp_max_bytes, render, render_fa
 from conning.policy import is_allowed, split_command
 from conning.secrets import SecretError, redact
 from conning.ssh import SSHError
-from conning.state import Approval, Job, lease_until, new_id
+from conning.state import Approval, Job, lease_until, new_id, problems
 from conning.targets import Target, TargetFileError, listing, load_targets, select
 from conning.transport import SSHTransport, Transport
 
@@ -71,11 +71,17 @@ class Core:
 
     def targets(self, filter: str | None = None, check: bool = False) -> str:
         try:
-            chosen = select(self.load(), filter)
+            everything = self.load()
         except TargetFileError as e:
             return f"error: {e}"
-        if not check or not chosen:
-            return listing(chosen)
+        if not everything:
+            return f"no targets in {paths.targets_file()} (add one with: conn add <name>)"
+        chosen = select(everything, filter)
+        if not chosen:
+            return f"no target matches {filter!r} (conn targets lists all)"
+        notes = problems()
+        if not check:
+            return listing(chosen, notes=notes)
 
         def probe(t: Target) -> str:
             if t.status == "pending":
@@ -88,7 +94,7 @@ class Core:
 
         with ThreadPoolExecutor(max_workers=16) as pool:
             reach = dict(zip((t.name for t in chosen), pool.map(probe, chosen), strict=True))
-        return listing(chosen, reach)
+        return listing(chosen, reach, notes)
 
     # --- run ----------------------------------------------------------------------------------
 

@@ -9,7 +9,9 @@ import sys
 
 from conning import __version__
 from conning.output import DEFAULT_MAX_BYTES, MAX_BYTES_CEILING
-from conning.targets import AUTHS, MODES
+from conning.secrets import SecretError
+from conning.ssh import SSHError
+from conning.targets import AUTHS, MODES, TargetFileError
 
 PLANNED = "not implemented yet (planned for M2); see docs/design.md"
 
@@ -43,7 +45,7 @@ def _targets(args: argparse.Namespace) -> int:
 def _run(args: argparse.Namespace) -> int:
     argv = args.argv
     if not argv:
-        print("error: give the command after --, e.g. conn run lab-lin1 -- uname -a")
+        print("error: give the command after the target, e.g. conn run lab-lin1 uname -a")
         return 1
     common = dict(cwd=args.cwd, wait=args.wait, timeout=args.timeout, max_bytes=args.max_bytes, grep=args.grep)
     if args.shell:
@@ -155,7 +157,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"output cap (default {DEFAULT_MAX_BYTES}, ceiling {MAX_BYTES_CEILING})",
     )
     sp.add_argument("--grep", help="keep only matching lines before capping")
-    sp.add_argument("argv", nargs="*", help="-- then the command and its arguments")
+    sp.add_argument("argv", nargs="*", help="the command and its arguments (conn's own options go before the target)")
 
     sp = cmd("read", "Page a job (new lines only), a saved output, an approval, or a remote file.", _read)
     sp.add_argument("id", help="j:<job>, o:<output>, a:<approval>, or <target>:<path>")
@@ -233,13 +235,46 @@ def _help_markdown(parser: argparse.ArgumentParser) -> str:
     return "\n".join(out)
 
 
+RUN_VALUE_OPTIONS = ("--wait", "--timeout", "--cwd", "--max-bytes", "--grep")
+RUN_FLAGS = ("--shell",)
+
+
+def _run_options(argv: list[str], i: int) -> int:
+    """Skip conn's own `run` options starting at argv[i]; return the index of the first other word."""
+    while i < len(argv):
+        word = argv[i]
+        if word in RUN_VALUE_OPTIONS:
+            i += 2
+        elif word in RUN_FLAGS or word.split("=", 1)[0] in RUN_VALUE_OPTIONS:
+            i += 1
+        else:
+            break
+    return i
+
+
+def _split_remote_command(argv: list[str]) -> tuple[list[str], list[str] | None]:
+    """Cut off the remote command so argparse never sees its flags.
+
+    `conn run [options] <target> [options] <command...>`: conn's own options may sit on either side of
+    the target; the first other word starts the remote command, and everything from there on is passed
+    through, flags included, so `conn run lab uname -a` works without `--`. An explicit `--` is honoured
+    too (and needed on Python 3.11, whose argparse mishandles `--` before a subcommand's positionals).
+    """
+    if "--" in argv:
+        cut = argv.index("--")
+        return argv[:cut], argv[cut + 1 :]
+    if not argv or argv[0] != "run":
+        return argv, None
+    target = _run_options(argv, 1)
+    if target >= len(argv) or argv[target].startswith("-"):
+        return argv, None  # no target (or -h): let argparse report it
+    command = _run_options(argv, target + 1)
+    return argv[:command], argv[command:]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    argv = list(sys.argv[1:] if argv is None else argv)
-    rest = None
-    if "--" in argv:  # split here: Python 3.11's argparse mishandles "--" before a subcommand's positionals
-        cut = argv.index("--")
-        argv, rest = argv[:cut], argv[cut + 1 :]
+    argv, rest = _split_remote_command(list(sys.argv[1:] if argv is None else argv))
     args = parser.parse_args(argv)
     if rest is not None:
         if getattr(args, "command", None) != "run":
@@ -248,4 +283,8 @@ def main(argv: list[str] | None = None) -> int:
     if not getattr(args, "func", None):
         parser.print_help()
         return 0
-    return args.func(args)
+    try:
+        return args.func(args)
+    except (OSError, TargetFileError, SecretError, SSHError) as e:  # one clear line, never a traceback
+        print(f"error: {e}")
+        return 1

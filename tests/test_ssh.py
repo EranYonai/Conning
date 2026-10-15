@@ -48,8 +48,8 @@ def test_config_for_key_and_password_auth(tmp_path):
 def test_connect_writes_config(home, fake_ssh):
     conn = ssh.connect(target())
     assert conn.argv[:2] == ["/usr/bin/ssh", "-F"] and conn.argv[-2:] == ["-T", ssh.ALIAS]
-    assert (home / "ssh" / "lab.conf").read_text().startswith("Host conning-target")
-    assert (home / "known_hosts").exists()
+    assert (ssh.paths.state_dir() / "ssh" / "lab.conf").read_text().startswith("Host conning-target")
+    assert not (home / "known_hosts").exists()  # running never writes the config dir
     assert conn.secrets == [] and "CONNING_ASKPASS_VALUE" not in conn.env
 
 
@@ -74,7 +74,7 @@ def test_windows_host_askpass_and_no_control_master(home, fake_ssh, monkeypatch)
     assert ssh._askpass_helper().name == "askpass.cmd"
     monkeypatch.setenv("LAB_PW", "pw-value")
     conn = ssh.connect(target(auth="password", secret="env:LAB_PW"))
-    conf = (home / "ssh" / "lab.conf").read_text()
+    conf = (ssh.paths.state_dir() / "ssh" / "lab.conf").read_text()
     assert "ControlMaster" not in conf and "GlobalKnownHostsFile NUL" in conf
     assert conn.env["SSH_ASKPASS"].endswith("askpass.cmd")
 
@@ -210,3 +210,12 @@ def test_runtime_dir_refuses_a_shared_dir(fake_ssh):
     d.chmod(0o777)
     with pytest.raises(ssh.SSHError, match="not a private directory"):
         ssh.runtime_dir()
+
+
+def test_connect_works_with_a_read_only_config_dir(home, fake_ssh):
+    """An agent sandbox may mount the config dir read-only; running must not write there."""
+    home.chmod(0o500)
+    try:
+        assert ssh.connect(target()).argv[-1] == ssh.ALIAS
+    finally:
+        home.chmod(0o700)

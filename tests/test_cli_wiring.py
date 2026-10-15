@@ -50,7 +50,7 @@ def test_double_dash_is_only_for_run(fake):
 
 def test_errors_exit_nonzero(fake, capsys):
     assert cli.main(["run", "lab"]) == 1
-    assert "give the command after --" in capsys.readouterr().out
+    assert "give the command after the target" in capsys.readouterr().out
     assert cli.main(["run", "lab", "--shell", "--", "fail"]) == 1
 
 
@@ -129,3 +129,40 @@ def test_mcp_tools_delegate_to_the_engine():
     assert call("read", id="j:ab", wait=3) == "read ok"
     assert call("transfer", source="local:a", dest="lab:/b") == "transfer ok"
     assert core.calls[1][1][:3] == ("lab", None, ["uname"])
+
+
+def test_everything_after_the_target_is_the_remote_command(fake):
+    """From Eran's agent: `conn run <target> uname -a` must not need `--`."""
+    assert cli.main(["run", "lab", "uname", "-a"]) == 0
+    assert fake.calls[-1][2]["argv"] == ["uname", "-a"]
+    assert cli.main(["run", "--wait", "0", "--grep", "x", "--shell", "lab", "ls", "-la", "--color"]) == 0
+    assert fake.calls[-1][2]["cmd"] == "ls -la --color" and fake.calls[-1][2]["wait"] == 0
+    assert cli.main(["run", "lab", "--wait", "5", "--", "make", "-j4"]) == 0  # options after the target, then --
+    assert fake.calls[-1][2]["argv"] == ["make", "-j4"] and fake.calls[-1][2]["wait"] == 5
+    assert cli.main(["run", "lab", "--wait=0", "--timeout", "9", "sleep", "300", "--wait", "1"]) == 0
+    assert fake.calls[-1][2]["argv"] == ["sleep", "300", "--wait", "1"]  # conn's options end at the command
+    assert fake.calls[-1][2]["wait"] == 0 and fake.calls[-1][2]["timeout"] == 9
+
+
+def test_run_without_a_target_is_a_usage_error(fake):
+    with pytest.raises(SystemExit):
+        cli.main(["run", "--wait", "0"])
+
+
+def test_file_problems_are_one_error_line(fake, monkeypatch, capsys):
+    def denied(*a, **k):
+        raise PermissionError(13, "Permission denied", "/cfg/known_hosts")
+
+    monkeypatch.setattr(admin, "remove", denied)
+    assert cli.main(["rm", "lab"]) == 1
+    assert capsys.readouterr().out == "error: [Errno 13] Permission denied: '/cfg/known_hosts'\n"
+
+
+def test_mcp_tools_turn_file_problems_into_errors():
+    class Broken:
+        def targets(self, *a):
+            raise PermissionError(13, "Permission denied", "/cfg")
+
+    srv = server.build_server(Broken())
+    text = asyncio.run(srv.call_tool("targets", {})).content[0].text
+    assert text == "error: [Errno 13] Permission denied: '/cfg'"

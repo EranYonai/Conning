@@ -74,3 +74,23 @@ def test_toml_values():
     assert _toml_value({"A": "env:X"}) == '{ A = "env:X" }'
     with pytest.raises(TypeError):
         _toml_value(1.5)
+
+
+def test_state_dir_defaults(monkeypatch, tmp_path):
+    monkeypatch.setenv("CONNING_STATE", str(tmp_path / "s"))
+    assert paths.state_dir() == tmp_path / "s"
+    monkeypatch.delenv("CONNING_STATE")
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "xdg"))
+    if paths.os.name != "nt":
+        assert paths.state_dir() == tmp_path / "xdg" / "conning"
+    monkeypatch.setattr(paths.os, "name", "nt")
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "Local"))
+
+    class FakePath:
+        def __new__(cls, *parts):
+            return tmp_path.joinpath(*map(str, parts))
+
+        home = staticmethod(lambda: tmp_path)
+
+    monkeypatch.setattr(paths, "Path", FakePath)
+    assert paths.state_dir() == tmp_path / "Local" / "conning" / "state"

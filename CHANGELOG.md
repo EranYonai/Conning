@@ -12,6 +12,11 @@
 - Secrets and their base64, URL and hex forms are redacted from all output.
 - Windows targets run synchronously through PowerShell for now.
 - Unit tests with a fake transport; CI gates coverage at 95%.
+- `conn run <target> uname -a` passes flags through without `--`; `conn approve a:<id>` prints the result.
+- Running commands never writes the config dir: job output, approvals and generated ssh configs go to a
+  state dir (`XDG_STATE_HOME/conning`, or `CONNING_STATE`). Works with a read-only config, as in agent sandboxes.
+- `conn targets` says where it looked when there are none, and why a pending target is pending.
+- File and secret problems print one `error:` line (CLI and MCP) instead of a traceback.
 
 ## 0.0.1 (unreleased)
 

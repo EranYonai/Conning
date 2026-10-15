@@ -183,6 +183,20 @@ def test_agent_cannot_add_a_password_target_without_a_reference(core):
     assert "--secret" in io.text and saved() is None
 
 
+class StubCore:
+    """Stands in for the engine when approving: records what the human's terminal would show."""
+
+    def __init__(self):
+        self.reads = []
+
+    def read(self, what, wait=0):
+        self.reads.append((what, wait))
+        return f"exit=0 for {what}"
+
+
+STUB = StubCore()
+
+
 def approval(**kw):
     a = Approval(
         id="ab12", targets=["lab"], command=None, argv=["pytest", "-x", "tests"], cwd="/w", timeout=60, created=0.0
@@ -197,8 +211,9 @@ def test_approve_command_once(home):
     write_targets(target())
     approval()
     io = FakeIO("a")
-    assert admin.approve(None, io, "a:ab12") == 0
+    assert admin.approve(STUB, io, "a:ab12") == 0
     assert Approval.load("ab12").status == "approved" and saved().allow == ()
+    assert "exit=0 for a:ab12" in io.text  # the human sees the result without a second command
     assert "(cwd /w)" in io.text and "always allow 'pytest tests'" in io.text
 
 
@@ -206,28 +221,28 @@ def test_approve_command_always_remembers_two_words(home):
     write_targets(target())
     approval()
     io = FakeIO()
-    assert admin.approve(None, io, "a:ab12", always=True) == 0
+    assert admin.approve(STUB, io, "a:ab12", always=True) == 0
     assert saved().allow == (("pytest", "tests"),)
     approval(status="pending")
-    admin.approve(None, FakeIO("e"), "a:ab12")
+    admin.approve(STUB, FakeIO("e"), "a:ab12")
     assert saved().allow == (("pytest", "tests"),)  # not added twice
 
 
 def test_deny_and_unknown_and_already_decided(home):
     write_targets(target())
     approval()
-    assert admin.approve(None, FakeIO("d"), "a:ab12") == 0 and Approval.load("ab12").status == "denied"
+    assert admin.approve(STUB, FakeIO("d"), "a:ab12") == 0 and Approval.load("ab12").status == "denied"
     io = FakeIO()
-    assert admin.approve(None, io, "a:ab12") == 0 and "already denied" in io.text
+    assert admin.approve(STUB, io, "a:ab12") == 0 and "already denied" in io.text
     io = FakeIO()
-    assert admin.approve(None, io, "a:ffff") == 1 and "no approval" in io.text
+    assert admin.approve(STUB, io, "a:ffff") == 1 and "no approval" in io.text
 
 
 def test_shell_syntax_command_can_only_be_allowed_once(home):
     write_targets(target())
     approval(argv=None, command="make | tee log", cwd=None)
     io = FakeIO("e")
-    admin.approve(None, io, "a:ab12")
+    admin.approve(STUB, io, "a:ab12")
     assert "[a]llow once, [d]eny" in io.text and Approval.load("ab12").status == "denied"
 
 
@@ -315,3 +330,26 @@ def test_import_match_and_missing(home, tmp_path):
     assert "imported 0 target(s) as pending: -" in io.text
     io = FakeIO()
     assert admin.import_ssh_config(io, "*", tmp_path / "nope") == 1 and "not found" in io.text
+
+
+def test_targets_shows_why_a_target_is_pending(core, transport, keyscan):
+    """From Eran's agent: a pending target with a pinned key gave no reason."""
+    transport.canned["uname -s"] = (255, b"ssh: connect to host 192.0.2.10 port 22: Connection reset")
+    transport.explain = lambda t, rc, out: out.decode()
+    admin.add(core, FakeIO("y"), "lab", host="192.0.2.10", user="u", auth="ssh-agent")
+    line = core.targets()
+    assert "mode=pending (login check failed: ssh: connect to host <host> port 22" in line
+    assert "192.0.2.10" not in line
+    transport.canned["uname -s"] = (0, b"Linux\n")
+    assert admin.approve(core, FakeIO("y"), "lab") == 0
+    assert core.targets().endswith("mode=ask")
+
+
+def test_declined_pin_and_missing_keys_are_recorded(core, keyscan, monkeypatch):
+    admin.add(core, FakeIO("n"), "lab", host="h", user="u", auth="ssh-agent")
+    assert "pending (host key not confirmed)" in core.targets()
+    keyscan["keys"] = []
+    monkeypatch.setattr(ssh, "port_open", lambda h, p, timeout=3: False)
+    monkeypatch.setattr(ssh, "no_ssh_hint", lambda t: "hint")
+    admin.approve(core, FakeIO(), "lab")
+    assert "pending (no SSH server answered)" in core.targets()

@@ -125,14 +125,14 @@ def select(targets: dict[str, Target], selector: str | None) -> list[Target]:
     return [targets[n] for n in (s.strip() for s in selector.split(",")) if n in targets]
 
 
-def listing(targets: list[Target], reach: dict[str, str] | None = None) -> str:
+def listing(targets: list[Target], reach: dict[str, str] | None = None, notes: dict[str, str] | None = None) -> str:
     """One line per target. Never prints a host, a user or a secret reference."""
-    if not targets:
-        return "no targets (add one with: conn add <name>)"
     width = max(len(t.name) for t in targets)
     lines = []
     for t in targets:
-        mode = "pending" if t.status == "pending" else t.mode
+        mode = t.mode
+        if t.status == "pending":
+            mode = f"pending ({notes[t.name]})" if notes and t.name in notes else "pending"
         tags = f"tags={','.join(t.tags)}" if t.tags else "tags=-"
         line = f"{t.name:<{width}}  {t.os:<7}  {t.shell:<4}  {tags}  mode={mode}"
         lines.append(f"{line}  reach={reach[t.name]}" if reach and t.name in reach else line)

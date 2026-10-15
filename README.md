@@ -6,8 +6,9 @@ commands and move files there. The agent never sees a password, and you approve 
 
 > **Status: pre-alpha (M2 in progress).** Running commands, long jobs, remote file reads and transfers
 > work over OpenSSH, with pinned host keys, password or key auth, approvals and leases. You can approve
-> in the agent client, in `conn watch` or with `conn approve`; `conn doctor` checks your setup. Windows
-> targets run synchronously for now, and `mcp install` is still to come. See
+> in the agent client, in `conn watch` or with `conn approve`; `conn doctor` checks your setup. Long
+> jobs run detached on Linux, macOS and Windows targets, and `conn mcp install` sets up claude, codex
+> or cursor. See
 > [docs/design.md](docs/design.md) for every decision so far.
 
 ## Why
@@ -30,7 +31,7 @@ reach the machines it tests on:
 
 ```sh
 uv tool install conning        # or: pipx install conning
-conn mcp install claude        # planned: writes the MCP entry for claude, codex or cursor
+conn mcp install claude        # or codex, cursor: adds the server and denies the agent raw ssh/scp
 ```
 
 The MCP server needs no install at all:
@@ -58,7 +59,7 @@ in sync with the code.
 <!-- conn-help:start -->
 ```
 conn targets [--check] [filter]
-    List targets: name, OS, shell, tags, mode. Never hosts or secrets.
+    List targets: name, OS, shell, user, tags, mode. Never hosts or secrets.
 
 conn run [--wait WAIT] [--timeout TIMEOUT] [--cwd CWD] [--shell]
                 [--max-bytes MAX_BYTES] [--grep GREP]

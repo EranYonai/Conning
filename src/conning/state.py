@@ -37,6 +37,7 @@ class Job:
     command: str  # what was run, for display
     started: float
     posix: bool = True
+    detached: bool = True  # polled on the target; false only when a Windows target couldn't detach
     fetched: int = 0  # bytes copied from the target's output file into the local log
     seen: int = 0  # bytes of the local log already returned to the agent through `read`
     rc: int | None = None

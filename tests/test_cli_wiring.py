@@ -71,9 +71,7 @@ def test_admin_commands_reach_admin(fake, monkeypatch):
     assert seen[1][2] == {"always": True} and seen[4][1] == (fake.io, "lab", 5) and seen[5][1] == (fake.io, "lab-*")
 
 
-def test_planned_and_help(capsys):
-    assert cli.main(["mcp", "install", "claude"]) == 2
-    assert "not implemented yet" in capsys.readouterr().err
+def test_help(capsys):
     assert cli.main([]) == 0
     assert cli.main(["help"]) == 0
     assert "usage: conn" in capsys.readouterr().out

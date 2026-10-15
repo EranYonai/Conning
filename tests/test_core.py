@@ -296,18 +296,6 @@ def win(**kw):
     return target("win", os="windows", shell="pwsh", allow=(("Get-Service",),), **kw)
 
 
-def test_windows_run_is_synchronous_and_encoded(core, transport):
-    write_targets(win())
-    transport.canned["pwsh -NoProfile -NonInteractive -EncodedCommand "] = (0, b"Running  sshd\n")
-    out = core.run("win", argv=["Get-Service", "sshd"])
-    assert out.startswith("exit=0") and "Running  sshd" in out
-    command = transport.calls[0][1]
-    import base64
-
-    script = base64.b64decode(command.rsplit(" ", 1)[1]).decode("utf-16-le")
-    assert "& 'Get-Service' 'sshd'" in script
-
-
 def test_windows_ssh_failure(core, transport):
     write_targets(win())
     transport.canned["pwsh"] = (255, b"Connection refused")

@@ -1,6 +1,7 @@
 """Shared fixtures. `LocalTransport` stands in for SSH: it runs the exact scripts Conning would send
 to a target with the local `sh`, against a throwaway $HOME, so job handling is tested for real
-without a server. PowerShell targets get canned answers.
+without a server. PowerShell scripts run the same way with a local `pwsh` when there is one (GitHub's
+Linux, macOS and Windows runners all have it); otherwise those tests are skipped.
 """
 
 import os
@@ -14,6 +15,7 @@ import pytest
 from conning.targets import Target, save_targets
 
 needs_sh = pytest.mark.skipif(sys.platform == "win32" or not shutil.which("sh"), reason="needs a POSIX sh")
+needs_pwsh = pytest.mark.skipif(not shutil.which("pwsh"), reason="needs PowerShell 7 (pwsh)")
 
 
 @pytest.fixture(autouse=True)
@@ -62,8 +64,11 @@ class LocalTransport:
         for prefix, answer in self.canned.items():
             if command.startswith(prefix):
                 return answer
-        env = {**os.environ, "HOME": str(self.remote_home)}
-        argv = ["sh", "-s"] if command == "sh -s" else ["sh", "-c", command]
+        env = {**os.environ, "HOME": str(self.remote_home), "USERPROFILE": str(self.remote_home)}
+        if command.startswith(("pwsh ", "powershell ")):
+            argv = [shutil.which("pwsh") or "pwsh", *command.split()[1:]]
+        else:
+            argv = ["sh", "-s"] if command == "sh -s" else ["sh", "-c", command]
         done = subprocess.run(argv, input=stdin or b"", capture_output=True, env=env, timeout=timeout)
         return done.returncode, done.stdout + done.stderr
 

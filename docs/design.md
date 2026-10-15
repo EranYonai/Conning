@@ -155,7 +155,7 @@ no terminal, since taking trust away is always safe. `conn allow <target>` lists
 - **M1 (done):** OpenSSH connector (generated config, pinning, askpass), `run`/`read`/`transfer`, job
   table, `add`/`approve`/`import`/`test`/`rm`/`lease`, keychain, `op://` and `env:` resolution,
   redaction, approvals by `conn approve a:<id>`.
-- **M2 (done once merged):** approvals in the agent client (MCP elicitation) and at the terminal,
+- **M2 (done):** approvals in the agent client (MCP elicitation) and at the terminal,
   `conn watch`, desktop notifications, hash-chained audit log, `allow`/`deny`, `doctor`, the built-in
   read-only list, `mcp install` with permission rules, detached jobs on Windows.
 - **Later:** WinRM connector, short-lived SSH certificates, per-target prepare recipes, MCP Registry listing.

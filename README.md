@@ -4,7 +4,7 @@
 your own laptop. Conning holds the keys to your lab VMs and gives the agent four lean tools to run
 commands and move files there. The agent never sees a password, and you approve anything risky.
 
-> **Status: pre-alpha (M2 in progress).** Running commands, long jobs, remote file reads and transfers
+> **Status: pre-alpha (M2 done).** Running commands, long jobs, remote file reads and transfers
 > work over OpenSSH, with pinned host keys, password or key auth, approvals and leases. You can approve
 > in the agent client, in `conn watch` or with `conn approve`; `conn doctor` checks your setup. Long
 > jobs run detached on Linux, macOS and Windows targets, and `conn mcp install` sets up claude, codex

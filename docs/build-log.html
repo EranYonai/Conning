@@ -162,7 +162,7 @@ footer{margin-top:5rem;border-top:2px dashed var(--rule);padding-block:24px 48px
 
   <div class="chapter"><div class="n">1</div><div class="body">
     <h3>The harness was in the wrong place</h3>
-    <p>The day before, Eran had shipped Cortest Harness: a small pi-style agent living <em>inside</em> a test CLI on a lab VM. It worked. Getting there took a wheel build, a sync, a module load, a credentials wizard and a reverse SSH tunnel, because the lab firewall wouldn't let the VM reach the LLM.</p>
+    <p>The day before, Eran had shipped a side project: a small pi-style agent living <em>inside</em> a test CLI on a lab VM. It worked. Getting there took a wheel build, a sync, a module load, a credentials wizard and a reverse SSH tunnel, because the lab firewall wouldn't let the VM reach the LLM.</p>
     <p>Looking back, the redundancy was obvious. Every developer already has a capable agent on their own machine. Why rebuild one on every VM?</p>
     <blockquote>Instead of having the CLI on the local remote machine, developers usually prefer to work with their own setup and dev machine. … The interface is 100% agent to agent, so it needs to work in a good, efficient way.<cite>Eran, the first message</cite></blockquote>
   </div></div>
@@ -198,7 +198,7 @@ exit=0  lab-lin1  dur=21.4s  <span class="d">(identical output collapsed)</span>
     <h3>Locking it in, one question at a time</h3>
     <p>Eran asked for a walkthrough instead of a document: a summary of each section, then the questions that close it. The first answers pulled the scope in. Conning is a tool for one developer on their own machine, so the team-shareable target file went away. Agents with only bash get the CLI as well as MCP. And the agent should know its own helpers well enough to enrol a new target.</p>
     <p>That last answer pushed on a rule all four voices had agreed on: the agent can never add a target. The compromise is that the agent proposes the target, it waits as <em>pending</em>, and Eran confirms it with one keystroke. Eran also cut a round trip: cache the CLI help in the README, so the agent doesn't have to call <code>--help</code> every session.</p>
-    <p>The sharpest moment was about approvals. Pressing "always allow" on <code>systemctl status</code> must not also allow <code>systemctl stop</code>. Eran's answer was to remember two words, not one, the same lesson as the Cortest read-only mode that leaked through cortest subcommands.</p>
+    <p>The sharpest moment was about approvals. Pressing "always allow" on <code>systemctl status</code> must not also allow <code>systemctl stop</code>. Eran's answer was to remember two words, not one, the same lesson as a read-only mode in that side project, which leaked through the test CLI's subcommands.</p>
     <blockquote>Remember 2 commands prefix. You see why?<cite>Eran</cite></blockquote>
   </div></div>
 
@@ -273,7 +273,7 @@ status=running job=j:3fa9 dur=20.0s +41 lines
       <tr><td class="id">D24</td><td>POSIX jobs run detached on the target, in their own process group, read by byte offset</td><td>A dropped SSH link never kills a test run; signals reach the whole tree</td><td><span class="st locked">locked</span></td></tr>
       <tr><td class="id">D1</td><td>The agent stays on the dev machine; Conning dials out to targets</td><td>No LLM tunnel, no handoff zip, no LLM keys on VMs</td><td><span class="st locked">locked</span></td></tr>
       <tr><td class="id">D2</td><td>One core with two front ends: an MCP server and the <code>conn</code> CLI, giving identical output</td><td>Approvals and jobs need a long-lived process; the CLI serves humans and scripts</td><td><span class="st locked">locked</span></td></tr>
-      <tr><td class="id">D3</td><td>Agents with only bash may use the CLI directly</td><td>Eran, Q1: works for any harness, including Cortest's</td><td><span class="st locked">locked</span></td></tr>
+      <tr><td class="id">D3</td><td>Agents with only bash may use the CLI directly</td><td>Eran, Q1: works for any harness, including the side project's</td><td><span class="st locked">locked</span></td></tr>
       <tr><td class="id">D4</td><td>Single developer on their own machine</td><td>Eran, Q2: keep v0.1 small</td><td><span class="st locked">locked</span></td></tr>
       <tr class="old"><td class="id">D4</td><td>A target file teams can commit and share</td><td>Superseded by D4 (single dev)</td><td><span class="st sup">superseded</span></td></tr>
       <tr><td class="id">D5</td><td>Four agent tools: targets, run, read, transfer</td><td>Eran, Q4: tool schemas cost tokens every turn; fewer tools beat more</td><td><span class="st locked">locked</span></td></tr>
@@ -293,7 +293,7 @@ status=running job=j:3fa9 dur=20.0s +41 lines
       <tr><td class="id">D11</td><td>Project is Conning, CLI <code>conn</code>; remote machines are "targets"</td><td>Free on PyPI and npm; agents already know "target"</td><td><span class="st locked">locked</span></td></tr>
       <tr class="old"><td class="id">D11</td><td>Project named Patchbay</td><td>Taken on PyPI and npm; superseded by Conning</td><td><span class="st sup">superseded</span></td></tr>
       <tr><td class="id">D12</td><td>No <code>{{secret:x}}</code> placeholders in agent commands in v0.1</td><td>A placeholder in a free command can be sent anywhere; human-declared env injection covers the need</td><td><span class="st prop">to confirm</span></td></tr>
-      <tr><td class="id">D21</td><td>Python, installed as a tool with <code>uv tool install conning</code></td><td>Eran, Q10: the Cortest stack; official MCP SDK; few dependencies</td><td><span class="st locked">locked</span></td></tr>
+      <tr><td class="id">D21</td><td>Python, installed as a tool with <code>uv tool install conning</code></td><td>Eran, Q10: the side project's stack; official MCP SDK; few dependencies</td><td><span class="st locked">locked</span></td></tr>
       <tr><td class="id">D22</td><td>Public repo on GitHub, EranYonai/Conning, Apache-2.0</td><td>Eran, Q11; Apache for its patent grant</td><td><span class="st locked">locked</span></td></tr>
       <tr><td class="id">D23</td><td>Ship as the <code>conning</code> package on PyPI, released by GitLab CI through PyPI Trusted Publishing on tag; run with <code>uvx conning mcp</code></td><td>No stored PyPI tokens; one-line MCP setup in any client</td><td><span class="st prop">to confirm</span></td></tr>
       <tr><td class="id">D13</td><td>Build our own; adopt ideas from prior art, not dependencies</td><td>Eran: learn from open source, keep our own server small and readable</td><td><span class="st locked">locked</span></td></tr>

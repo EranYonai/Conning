@@ -28,7 +28,9 @@ def test_the_image_runs_unprivileged_with_the_volume_and_the_ssh_client():
     assert "CONNING_HOME=/conning" in DOCKERFILE and "CONNING_STATE=/conning/state" in DOCKERFILE
     assert 'VOLUME ["/conning"]' in DOCKERFILE
     assert 'ENTRYPOINT ["python", "/usr/local/lib/conning-entrypoint.py"]' in DOCKERFILE and 'CMD ["mcp"]' in DOCKERFILE
-    assert "uv export --frozen" in DOCKERFILE  # the locked versions CI tested
+    assert (
+        "uv sync --frozen --no-dev --no-editable" in DOCKERFILE and "pip install" not in DOCKERFILE
+    )  # uv, from uv.lock
     assert "CONNING_IN_CONTAINER=1" in DOCKERFILE
 
 

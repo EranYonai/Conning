@@ -3,6 +3,7 @@
 A clean-clone check of a branch against a real SSH server, from a Linux or macOS workstation (WSL works
 too). It takes about ten minutes. Every step lists what you should see. Your real Conning config is
 never touched: everything lives in a throwaway `CONNING_HOME` (config) and `CONNING_STATE` (job output).
+For using it on real work, see [field-test.md](field-test.md).
 
 You need `git`, [`uv`](https://docs.astral.sh/uv/) and the OpenSSH client (`ssh`, `scp`, `ssh-keygen`,
 `ssh-keyscan`).

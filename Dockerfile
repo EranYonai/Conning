@@ -17,14 +17,16 @@
 
 FROM python:3.13-slim AS build
 
-ENV PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_NO_CACHE_DIR=1
+# uv builds the environment, as it does everywhere else in this repo: the versions in uv.lock, the
+# ones CI tested, into a venv the runtime stage copies whole. The image's own Python, no downloads.
 COPY --from=ghcr.io/astral-sh/uv:0.11.32 /uv /usr/local/bin/uv
+ENV UV_PROJECT_ENVIRONMENT=/opt/conning UV_PYTHON_DOWNLOADS=never UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 WORKDIR /src
-COPY pyproject.toml uv.lock README.md LICENSE ./
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
+COPY README.md LICENSE ./
 COPY src ./src
-# The versions CI tested, from uv.lock, not whatever is newest on the day of the build.
-RUN uv export --frozen --no-dev --no-emit-project --no-hashes -o requirements.txt \
-    && pip install --prefix=/install -r requirements.txt .
+RUN uv sync --frozen --no-dev --no-editable
 
 FROM python:3.13-slim
 
@@ -37,14 +39,15 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=build /install /usr/local
+COPY --from=build /opt/conning /opt/conning
 COPY docker/entrypoint.py /usr/local/lib/conning-entrypoint.py
 
 # The jobs the server starts are remote; nothing here needs root. The entrypoint starts as root only
 # to switch to the owner of /conning; `docker run --user` skips that.
 RUN useradd --create-home --uid 1000 conning && mkdir -p /conning && chown conning:conning /conning
 
-ENV CONNING_HOME=/conning \
+ENV PATH=/opt/conning/bin:$PATH \
+    CONNING_HOME=/conning \
     CONNING_STATE=/conning/state \
     CONNING_IN_CONTAINER=1 \
     PYTHONUNBUFFERED=1

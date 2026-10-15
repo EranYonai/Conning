@@ -1,0 +1,50 @@
+name: Field report
+description: Something got in the way while using Conning for real work (see docs/field-test.md).
+title: "Field: "
+labels: ["field-report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This repository is public. Replace hostnames, IP addresses, usernames and anything secret with
+        placeholders before you paste.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you asked the agent, what it did, and what you expected instead.
+    validations:
+      required: true
+  - type: dropdown
+    id: client
+    attributes:
+      label: Client
+      options: [Claude Code, Codex CLI, Cursor, opencode, pi, the conn CLI by hand, other]
+    validations:
+      required: true
+  - type: dropdown
+    id: server
+    attributes:
+      label: How the server runs
+      options: [conn mcp install (uv tool), uvx conning mcp, Docker image, from a checkout (uv run)]
+    validations:
+      required: true
+  - type: dropdown
+    id: target
+    attributes:
+      label: Target OS
+      multiple: true
+      options: [Linux, Windows, macOS, other]
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: conn --version and conn doctor
+      render: text
+  - type: textarea
+    id: log
+    attributes:
+      label: conn watch or audit.jsonl lines around it
+      description: Optional, but usually where the cause is.
+      render: text

@@ -2,8 +2,8 @@
 
 ## 0.2.0 (unreleased)
 
-- Approve commands where you are: in the agent client with `conn mcp --approve-in-client` (MCP
-  elicitation, both protocol versions), in `conn watch`, or with `conn approve`. A desktop notification
+- Approve commands where you are: in the agent client (MCP elicitation, both protocol versions; on by
+  default, `conn mcp --no-approve-in-client` turns it off), in `conn watch`, or with `conn approve`. A desktop notification
   says when a command is waiting (`CONNING_NOTIFY=0` turns it off).
 - `conn watch`: every command, decision and job exit as it happens, new job output, and approval prompts.
 - Audit log in the state dir (`audit.jsonl`), hash-chained; `conn doctor` reports edits.

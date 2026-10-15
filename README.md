@@ -36,7 +36,7 @@ conn mcp install claude        # planned: writes the MCP entry for claude, codex
 The MCP server needs no install at all:
 
 ```sh
-claude mcp add conning -- uvx conning mcp --approve-in-client
+claude mcp add conning -- uvx conning mcp
 ```
 
 ## The agent's four tools
@@ -106,7 +106,7 @@ conn watch [--history HISTORY] [--no-prompt]
 conn doctor
     Check this machine's setup: config and state dirs, ssh, keychain, targets.
 
-conn mcp [--approve-in-client] <serve|install> ...
+conn mcp [--approve-in-client | --no-approve-in-client] <serve|install> ...
     Run the MCP server on stdio, or install it into an agent client.
 
 conn help [--markdown]
@@ -122,9 +122,10 @@ A command outside a target's allowlist returns `status=pending_approval id=a:<id
 notification tells the human. They answer in one of three places (allow once, always allow its first
 two words, or deny), and the agent picks up the result with `read a:<id>`:
 
-- **In the agent client**, if the server runs as `conn mcp --approve-in-client`: the client shows the
-  question before the command is queued, and an approved command runs in the same call. Use it with
-  clients that show such prompts to you, not to the model.
+- **In the agent client**: any MCP client that supports elicitation shows the question before the
+  command is queued, and an approved command runs in the same call. Clients without it fall back to
+  the two below. If a client would answer such prompts by itself instead of asking you, run the server
+  as `conn mcp --no-approve-in-client`.
 - **In `conn watch`**, which also shows every command and its output as it happens.
 - **With `conn approve a:<id>`** in any terminal.
 

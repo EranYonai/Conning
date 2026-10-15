@@ -178,7 +178,7 @@ conn deny lab df             # expect: 'df' now asks again on lab
 ```
 
 Approvals in the client, with a real agent: `claude mcp add conning-dev -e CONNING_HOME=$CONNING_HOME
--e CONNING_STATE=$CONNING_STATE -- uv run --directory $PWD -q conn mcp --approve-in-client`, then ask it
+-e CONNING_STATE=$CONNING_STATE -- uv run --directory $PWD -q conn mcp`, then ask it
 to run `hostname` on lab. Expect a prompt in the client with once / always / deny, and the result in
 the same reply after you pick. On macOS and Linux a desktop notification appears too.
 

@@ -62,12 +62,13 @@ call only when it returns, so the agent gets progress by polling `read`.
 A command that waits for the human can be answered three ways, all through one function so they
 remember the same rule and leave the same audit entry:
 
-1. **In the agent client** (opt-in, `conn mcp --approve-in-client`). The `run` tool asks through MCP
+1. **In the agent client** (on by default; `conn mcp --no-approve-in-client` turns it off). The `run` tool asks through MCP
    elicitation *before* the command is queued: once, always, or deny. On protocol 2026-07-28 the
    question rides an `input_required` result and the client retries the call with the answer; older
    clients get a mid-call `elicitation/create`. The question depends only on the call's arguments, so a
-   retry sees the same one. Opt-in because the protocol lets a client answer an elicitation by itself;
-   turn it on for clients that show it to a person.
+   retry sees the same one. This works with any MCP client that supports elicitation; for clients that
+   don't, the command simply waits for one of the other two. The protocol lets a client answer an
+   elicitation by itself, so turn it off for a client that would do that instead of asking you.
 2. **`conn watch`**, a terminal that prints every event as it happens, new job output, and prompts for
    each pending command.
 3. **`conn approve a:<id>`**, as in M1. A desktop notification (macOS, Linux; `CONNING_NOTIFY=0` turns
@@ -113,7 +114,8 @@ no terminal, since taking trust away is always safe. `conn allow <target>` lists
 | D30 | The `max_bytes` ceiling is 16 KB | Eran: 8 to 16 KB; one call never floods the context, paging covers the rest | locked |
 | D31 | No listing in the official MCP Registry yet | Eran: maybe in the future | locked |
 | D32 | The tool-schema size stays a test cap, not a published token budget | Eran: no need to publish it | locked |
-| D33 | Approving in the agent client is opt-in (`conn mcp --approve-in-client`), asked before the command is queued, through the SDK's resolver so both protocol versions work | The protocol allows a client to answer an elicitation itself; only clients that show it to a person should approve | proposed |
+| ~~D33~~ | ~~Approving in the agent client is opt-in~~ | Superseded by D38 | superseded |
+| D38 | Approving in the agent client is on by default for every MCP client that supports elicitation (`--no-approve-in-client` turns it off), asked before the command is queued, through the SDK's resolver so both protocol versions work | Eran: a general MCP for all agents, and in-chat approval should be on; clients without elicitation fall back to `conn watch` / `conn approve` | locked |
 | D34 | One audit log in the state dir, JSON lines, each with the sha256 of the line before; `conn watch` and `conn doctor` read it | One source for the live view and for after-the-fact review; edits show up | locked |
 | D35 | `conn allow` needs a terminal and a yes; `conn deny` does not | Granting trust is human-only (like approve and lease); revoking it is always safe | locked |
 | D36 | `conn watch` reads only local files (audit log, job logs) and never contacts a target | Runs beside any number of agents without racing their reads | locked |

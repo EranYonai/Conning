@@ -89,21 +89,24 @@ async def apply_answer(answer, core: Core, result: str, wait: int, max_bytes: in
     return result[: match.start()] + line + result[match.end() :]
 
 
-def build_server(core: Core | None = None, *, approve_in_client: bool = False) -> MCPServer:
+def build_server(core: Core | None = None, *, approve_in_client: bool = True) -> MCPServer:
     core = core or Core()
     server = MCPServer(name="conning", instructions=INSTRUCTIONS, version=__version__)
 
     def ask_human(
         target: str, ctx: Context, cmd: str | None = None, argv: list[str] | None = None, cwd: str | None = None
     ) -> Elicit[Decision] | None:
-        """Opt-in (`conn mcp --approve-in-client`): ask in the agent client before the command waits.
+        """Ask the human in the agent client before the command waits (MCP elicitation, D33).
 
-        The protocol lets a client answer an elicitation by itself, so this is for clients that
-        show it to a person. Without it, or without client support, `conn approve` answers.
+        Any client that supports elicitation shows the prompt; for the rest, or with
+        `conn mcp --no-approve-in-client`, the command waits for `conn watch` or `conn approve`.
         """
         if not approve_in_client:
             return None
-        caps = ctx.client_capabilities
+        try:
+            caps = ctx.client_capabilities
+        except ValueError:  # called outside an MCP request (in-process use)
+            return None
         if caps is None or caps.elicitation is None:
             return None
         message = _safe(lambda: approval_question(core, target, cmd, argv, cwd))

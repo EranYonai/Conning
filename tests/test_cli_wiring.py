@@ -97,8 +97,8 @@ def test_mcp_serve(monkeypatch):
     flags = []
     monkeypatch.setattr(server, "build_server", lambda approve_in_client: flags.append(approve_in_client) or Server())
     assert cli.main(["mcp"]) == 0 and cli.main(["mcp", "serve"]) == 0
-    assert cli.main(["mcp", "--approve-in-client"]) == 0
-    assert ran == ["stdio", "stdio", "stdio"] and flags == [False, False, True]
+    assert cli.main(["mcp", "--no-approve-in-client"]) == 0
+    assert ran == ["stdio", "stdio", "stdio"] and flags == [True, True, False]
 
 
 def test_real_core_and_io_factories(home):

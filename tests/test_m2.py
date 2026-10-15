@@ -440,7 +440,7 @@ def answer(action, decision=None):
 def test_client_prompt_allows_always(home, mode):
     write_targets(target("lab"))
     engine = EngineStub()
-    text, seen = call_run(server.build_server(engine, approve_in_client=True), answer("accept", "always"), mode=mode)
+    text, seen = call_run(server.build_server(engine), answer("accept", "always"), mode=mode)
     assert "systemctl status sshd" in seen[0].message and "'systemctl status ...'" in seen[0].message
     assert seen[0].requested_schema["properties"]["decision"]["enum"] == ["once", "always", "deny"]
     assert text == "refused  db  (observe)\nexit=0 dur=0.1s out=o:xy\nactive"
@@ -452,7 +452,7 @@ def test_client_prompt_allows_always(home, mode):
 def test_client_prompt_for_a_shell_string_with_cwd(home):
     engine = EngineStub("ls | wc -l")
     args = {"target": "lab", "cmd": "ls | wc -l", "cwd": "/srv"}
-    text, seen = call_run(server.build_server(engine, approve_in_client=True), answer("accept", "once"), args=args)
+    text, seen = call_run(server.build_server(engine), answer("accept", "once"), args=args)
     assert "(in /srv)" in seen[0].message and "never remembered" in seen[0].message
     assert text.endswith("active") and Approval.load(engine.approval.id).status == "approved"
 
@@ -461,7 +461,7 @@ def test_client_prompt_for_a_shell_string_with_cwd(home):
 @pytest.mark.parametrize("action, decision", [("accept", "deny"), ("decline", None)])
 def test_client_prompt_denies(home, action, decision, mode):
     engine = EngineStub()
-    text, _ = call_run(server.build_server(engine, approve_in_client=True), answer(action, decision), mode=mode)
+    text, _ = call_run(server.build_server(engine), answer(action, decision), mode=mode)
     assert f"status=denied id=a:{engine.approval.id} (the human declined: systemctl status sshd)" in text
     assert engine.reads == [] and Approval.load(engine.approval.id).status == "denied"
 
@@ -469,20 +469,20 @@ def test_client_prompt_denies(home, action, decision, mode):
 @MODES
 def test_client_prompt_cancel_leaves_it_pending(home, mode):
     engine = EngineStub()
-    text, _ = call_run(server.build_server(engine, approve_in_client=True), answer("cancel"), mode=mode)
+    text, _ = call_run(server.build_server(engine), answer("cancel"), mode=mode)
     assert "status=pending_approval" in text and Approval.load(engine.approval.id).status == "pending"
 
 
-def test_client_prompt_needs_opt_in_and_capability(home):
+def test_client_prompt_is_on_by_default_and_needs_capability(home):
     engine = EngineStub()
-    text, seen = call_run(server.build_server(engine), answer("accept", "once"))
+    text, seen = call_run(server.build_server(engine, approve_in_client=False), answer("accept", "once"))
     assert seen == [] and "status=pending_approval" in text
-    text, seen = call_run(server.build_server(engine, approve_in_client=True), capable=False)
+    text, seen = call_run(server.build_server(engine), capable=False)
     assert seen == [] and "status=pending_approval" in text
 
 
 def test_client_prompt_only_when_the_command_would_wait(home):
-    text, seen = call_run(server.build_server(EngineStub(asks=()), approve_in_client=True), answer("accept", "once"))
+    text, seen = call_run(server.build_server(EngineStub(asks=())), answer("accept", "once"))
     assert text == "exit=0 dur=0.1s" and seen == []
 
 
@@ -492,7 +492,7 @@ def test_client_prompt_skips_engine_errors(home):
             raise PermissionError(13, "Permission denied", "/cfg")
 
     engine = Broken()
-    text, seen = call_run(server.build_server(engine, approve_in_client=True), answer("accept", "once"))
+    text, seen = call_run(server.build_server(engine), answer("accept", "once"))
     assert seen == [] and "status=pending_approval" in text
 
 

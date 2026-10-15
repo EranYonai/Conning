@@ -237,7 +237,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp = cmd("mcp", "Run the MCP server on stdio, or install it into an agent client.", _mcp)
     sp.add_argument(
         "--approve-in-client",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help="ask the human in the agent client (MCP elicitation) when a command needs approval",
     )
     mcp_sub = sp.add_subparsers(dest="mcp_command", metavar="<serve|install>")

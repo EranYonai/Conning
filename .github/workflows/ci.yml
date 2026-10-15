@@ -49,3 +49,8 @@ jobs:
           echo "$out"
           echo "$out" | grep -q "running in a container"
           echo "$out" | grep -q "ssh found"
+      - name: files written to a host folder stay the host user's
+        run: |
+          mkdir host-conning
+          docker run --rm -v "$PWD/host-conning:/conning" conning:ci doctor
+          test "$(stat -c %u host-conning/state)" = "$(id -u)"

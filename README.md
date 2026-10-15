@@ -49,9 +49,10 @@ docker run -i --rm --network host \
   ghcr.io/eranyonai/conning:latest
 ```
 
-The image carries Python, the OpenSSH client and Conning, and nothing else; it runs as a non-root
-user and keeps targets, pinned host keys and job output on the `/conning` volume. Two things stay on
-your machine (D46):
+The image carries Python, the OpenSSH client and Conning, and nothing else. Targets, pinned host
+keys and job output live on the `/conning` volume, and `conn` runs as that folder's owner, so files it
+writes there stay yours on the host. On Docker Desktop for Mac, forward the agent with
+`-v /run/host-services/ssh-auth.sock:/ssh-agent` instead. Two things stay on your machine (D46):
 
 - **Approving.** `conn add`, `conn approve`, `conn lease` and `conn allow` need your terminal. Install
   the CLI on the host and point it at the same folder: `CONNING_HOME=~/.config/conning conn approve a:1`.

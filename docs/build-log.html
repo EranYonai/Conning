@@ -189,8 +189,8 @@ exit=0  lab-lin1  dur=21.4s  <span class="d">(identical output collapsed)</span>
   </div></div>
 
   <div class="chapter"><div class="n">4</div><div class="body">
-    <h3>Adopt ideas</h3>
-    <blockquote>I trust myself and you more than the open source community. But we very strongly need to adopt good ideas from it.<cite>Eran</cite></blockquote>
+    <h3>Learning from open source</h3>
+    <blockquote>Open source got us here, and the best ideas in Conning come from people who solved these problems first. We still want to build our own, because Conning should be one small, lightweight MCP server we can read end to end. That means few dependencies, nothing hidden, and easy to trust with your keys.<cite>Eran</cite></blockquote>
     <p>The survey found nothing that combines a vault that keeps secrets out of the model, a token-lean exec API, and Windows plus Linux targets. It did find good parts. From 1Password and HashiCorp Boundary we took "access without exposure", from Teleport deny-first policy, from OpenHands the timeout that hands control back instead of killing, and from Desktop Commander and E2B job handles with tail reads. One SSH MCP server measured its own 37 tools at about 43.5k tokens, which became our warning.</p>
   </div></div>
 
@@ -284,7 +284,7 @@ status=running job=j:3fa9 dur=20.0s +41 lines
       <tr><td class="id">D21</td><td>Python, installed as a tool with <code>uv tool install conning</code></td><td>Eran, Q10: the Cortest stack; official MCP SDK; few dependencies</td><td><span class="st locked">locked</span></td></tr>
       <tr><td class="id">D22</td><td>Public repo on GitHub, EranYonai/Conning, Apache-2.0</td><td>Eran, Q11; Apache for its patent grant</td><td><span class="st locked">locked</span></td></tr>
       <tr><td class="id">D23</td><td>Ship as the <code>conning</code> package on PyPI, released by GitLab CI through PyPI Trusted Publishing on tag; run with <code>uvx conning mcp</code></td><td>No stored PyPI tokens; one-line MCP setup in any client</td><td><span class="st prop">to confirm</span></td></tr>
-      <tr><td class="id">D13</td><td>Build our own; adopt ideas from prior art, not dependencies</td><td>Eran: trust ourselves, adopt good ideas</td><td><span class="st locked">locked</span></td></tr>
+      <tr><td class="id">D13</td><td>Build our own; adopt ideas from prior art, not dependencies</td><td>Eran: learn from open source, keep our own server small and readable</td><td><span class="st locked">locked</span></td></tr>
     </tbody>
   </table></div>
   <div class="col" id="open">

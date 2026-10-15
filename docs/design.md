@@ -71,7 +71,7 @@ call only when it returns, so the agent gets progress by polling `read`.
 | D10 | CLI help cached in the README (generated, tested) | Saves a `--help` round trip per session | locked |
 | D11 | Project is Conning (CLI `conn`); machines are "targets" | Free on PyPI and npm; agents know "target" | locked |
 | D12 | No `{{secret:x}}` placeholders in agent commands in v0.1 | A placeholder in a free command can leak; `inject` env covers it | proposed |
-| D13 | Build our own; adopt ideas from prior art, not dependencies | Trust ourselves, adopt good ideas | locked |
+| D13 | Build our own; adopt ideas from prior art, not dependencies | Learn from open source, keep our own server small and readable | locked |
 | D14 | `max_bytes=8192` default argument, raisable to a ceiling | Lean by default, more on demand | locked |
 | ~~D14~~ | ~~Ceiling of 64 KB~~ | Superseded by D30 | superseded |
 | D15 | Progress streams to the human; the agent polls `read` for new lines | Models see a call only when it returns | locked |

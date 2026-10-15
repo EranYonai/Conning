@@ -5,7 +5,7 @@ followed by the head and tail of the output, never more than `max_bytes` in tota
 """
 
 DEFAULT_MAX_BYTES = 8192
-MAX_BYTES_CEILING = 65536  # the most an agent may ask for in one call
+MAX_BYTES_CEILING = 16384  # the most an agent may ask for in one call (D30)
 
 
 def clamp_max_bytes(requested: int | None) -> int:
@@ -34,7 +34,8 @@ def render(
     if len(lines) <= head + tail and total_bytes + len(header) + 1 <= max_bytes:
         return f"{header}\n{text}".rstrip("\n") if text else header
 
-    head_part, tail_part = lines[:head], lines[max(head, len(lines) - tail) :]
+    first = min(head, len(lines) - 1)  # the last line always goes to the tail
+    head_part, tail_part = lines[:first], lines[max(first, len(lines) - tail) :]
     where = f"read {handle} for the rest" if handle else "output not kept"
 
     def compose() -> str:
@@ -52,7 +53,7 @@ def render(
         out = compose()
     if len(out.encode()) > max_bytes:  # one enormous line: keep its end
         info_len = len(out.encode()) - len(tail_part[-1].encode())
-        keep = max(0, max_bytes - info_len - 1)
+        keep = max(0, max_bytes - info_len - len("…".encode()))
         tail_part = ["…" + tail_part[-1].encode()[-keep:].decode(errors="ignore")] if keep else []
         out = compose()
         out = out.encode()[:max_bytes].decode(errors="ignore")

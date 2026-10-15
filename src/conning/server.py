@@ -4,7 +4,6 @@ No tool returns a secret, adds a live target or changes policy (D5). Tool schema
 model's context on every turn, so docstrings stay short and the variety lives in parameters.
 """
 
-import re
 import shlex
 from typing import Annotated, Literal
 
@@ -13,7 +12,7 @@ from mcp.server.mcpserver import AcceptedElicitation, Context, Elicit, Elicitati
 from pydantic import BaseModel, Field
 
 from conning import __version__, admin
-from conning.core import Core
+from conning.core import PENDING, Core
 from conning.output import DEFAULT_MAX_BYTES
 from conning.policy import remembered_rule, split_command
 from conning.secrets import SecretError
@@ -36,9 +35,6 @@ def _safe(call) -> str:
         return call()
     except (OSError, TargetFileError, SecretError, SSHError) as e:
         return f"error: {e}"
-
-
-PENDING = re.compile(r"^status=pending_approval id=a:(\w+).*$", re.M)
 
 
 class Decision(BaseModel):

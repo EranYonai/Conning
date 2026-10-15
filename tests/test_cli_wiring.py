@@ -3,6 +3,7 @@
 import asyncio
 
 import pytest
+from test_admin import FakeIO
 
 from conning import admin, cli, server
 
@@ -23,7 +24,8 @@ class FakeCore:
 def fake(monkeypatch):
     core = FakeCore()
     monkeypatch.setattr(cli, "_core", lambda: core)
-    monkeypatch.setattr(cli, "_io", lambda: "io")
+    core.io = FakeIO(tty=False)
+    monkeypatch.setattr(cli, "_io", lambda: core.io)
     return core
 
 
@@ -66,7 +68,7 @@ def test_admin_commands_reach_admin(fake, monkeypatch):
     assert cli.main(["import", "--match", "lab-*"]) == 0
     assert [s[0] for s in seen] == ["add", "approve", "remove", "test", "lease", "import_ssh_config"]
     assert seen[0][2]["tags"] == ["x"] and seen[0][2]["os_name"] == "windows"
-    assert seen[1][2] == {"always": True} and seen[4][1] == ("io", "lab", 5) and seen[5][1] == ("io", "lab-*")
+    assert seen[1][2] == {"always": True} and seen[4][1] == (fake.io, "lab", 5) and seen[5][1] == (fake.io, "lab-*")
 
 
 def test_planned_and_help(capsys):

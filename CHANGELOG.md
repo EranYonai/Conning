@@ -5,6 +5,8 @@
 - Approve commands where you are: in the agent client (MCP elicitation, both protocol versions; on by
   default, `conn mcp --no-approve-in-client` turns it off), in `conn watch`, or with `conn approve`. A desktop notification
   says when a command is waiting (`CONNING_NOTIFY=0` turns it off).
+- `conn run` at a terminal asks right there when a command needs approval, and prints the result; a
+  target name typed where the command starts is caught with a hint to use `a,b`.
 - `conn watch`: every command, decision and job exit as it happens, new job output, and approval prompts.
 - Audit log in the state dir (`audit.jsonl`), hash-chained; `conn doctor` reports edits.
 - Built-in read-only list: `uname`, `hostname`, `df`, `ps`, `ls`, `ip addr`, `systemctl status`, `journalctl`,

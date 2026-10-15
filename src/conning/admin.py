@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Protocol
 
 from conning import audit, paths, ssh
-from conning.core import Core
+from conning.core import PENDING, Core
 from conning.policy import SAFE, WRAPPERS, program, remembered_rule, split_command
 from conning.secrets import SecretError, store_in_keychain
 from conning.state import Approval, Job, grant_lease, set_problem
@@ -222,7 +222,28 @@ def approve_target(core: Core, io: IO, name: str) -> int:
     return _enroll(core, io, t)
 
 
-def approve_command(io: IO, approval_id: str, *, always: bool = False) -> int:
+def run_here(core: Core, io: IO, result: str, *, wait: int, max_bytes: int, grep: str | None) -> int:
+    """`conn run` at a terminal: a command that needs approval is asked about right here, and its
+    result printed, instead of handing back an id to copy into `conn approve`."""
+    match = PENDING.search(result)
+    if match is None or not io.tty:
+        io.say(result)
+        return 1 if result.startswith("error:") else 0
+    others = PENDING.sub("", result).strip()
+    if others:
+        io.say(others)
+    approval_id = match.group(1)
+    approve_command(io, approval_id, inline=True)
+    a = Approval.load(approval_id)
+    if a is None or a.status != "approved":
+        return 1
+    out = core.read(f"a:{approval_id}", wait=wait, grep=grep, max_bytes=max_bytes)
+    first, _, rest = out.partition("\n")
+    io.say(rest if first.startswith(f"approved a:{approval_id}") and rest else out)
+    return 1 if out.startswith("error:") else 0
+
+
+def approve_command(io: IO, approval_id: str, *, always: bool = False, inline: bool = False) -> int:
     a = Approval.load(approval_id)
     if a is None:
         io.say(f"error: no approval a:{approval_id}")
@@ -230,14 +251,18 @@ def approve_command(io: IO, approval_id: str, *, always: bool = False) -> int:
     if a.status != "pending":
         io.say(f"a:{a.id} is already {a.status}")
         return 0
-    io.say(f"a:{a.id} on {', '.join(a.targets)}" + (f" (cwd {a.cwd})" if a.cwd else ""))
-    io.say(f"  {a.display}")
+    where = ", ".join(a.targets) + (f" (cwd {a.cwd})" if a.cwd else "")
+    io.say(f"needs approval on {where}: {a.display}" if inline else f"a:{a.id} on {where}\n  {a.display}")
     policy_argv = a.argv if a.argv is not None else split_command(a.command or "")
     rule = remembered_rule(policy_argv)
     choices = "[a]llow once, [e] always allow '" + " ".join(rule) + "', [d]eny" if rule else "[a]llow once, [d]eny"
     answer = "e" if always and rule else io.ask(f"{choices}: ").strip().lower()[:1]
     choice = {"a": "once", "e": "always"}.get(answer) if answer in (("a", "e") if rule else ("a",)) else None
-    io.say(decide(a, choice or "deny", by="terminal"))
+    said = decide(a, choice or "deny", by="terminal")
+    if inline:  # the result follows right here, so the note about the agent's `read` is noise
+        said = "\n".join(line for line in said.splitlines() if not line.startswith("approved a:"))
+    if said:
+        io.say(said)
     return 0
 
 

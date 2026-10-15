@@ -127,7 +127,8 @@ two words, or deny), and the agent picks up the result with `read a:<id>`:
   the two below. If a client would answer such prompts by itself instead of asking you, run the server
   as `conn mcp --no-approve-in-client`.
 - **In `conn watch`**, which also shows every command and its output as it happens.
-- **With `conn approve a:<id>`** in any terminal.
+- **With `conn approve a:<id>`** in any terminal. When you run `conn run` yourself at a terminal, it
+  just asks you there and prints the result.
 
 Read-only commands such as `uname`, `hostname`, `df`, `ps`, `ls`, `ip addr`, `systemctl status` and
 `journalctl` run without asking on every target; each is checked so its changing forms (`hostname x`,

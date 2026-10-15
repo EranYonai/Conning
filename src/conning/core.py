@@ -2,6 +2,7 @@
 is identical. Policy is enforced here, in code, on every call.
 """
 
+import re
 import shlex
 import time
 from collections.abc import Callable
@@ -19,6 +20,7 @@ from conning.transport import SSHTransport, Transport
 
 POLL_CHUNK = 1 << 20
 APPROVE_HINT = "human runs: conn approve a:{id}"
+PENDING = re.compile(r"^status=pending_approval id=a:(\w+).*$", re.M)
 
 
 class Core:
@@ -33,6 +35,7 @@ class Core:
         self.clock = clock
         self.sleep = sleep
         self.poll_interval = poll_interval
+        self.notify = True  # off when a human runs `conn run` at a terminal and is asked right there
 
     # --- helpers ------------------------------------------------------------------------------
 
@@ -127,6 +130,13 @@ class Core:
         if err:
             return err
         policy_argv = argv if argv is not None else split_command(cmd or "")
+        first = (policy_argv or [""])[0]
+        if first in self.load():
+            names = ",".join(dict.fromkeys([*(t.name for t in chosen), first]))
+            return (
+                f"error: '{first}' is a target, not a command; to run on several targets, "
+                f"join them with commas: {names} <command>"
+            )
         decisions = {t.name: self._decide(t, policy_argv) for t in chosen}
         shown = cmd if cmd is not None else shlex.join(argv or [])
         for t in chosen:
@@ -142,7 +152,8 @@ class Core:
             a = Approval(id=new_id(), targets=needs, command=cmd, argv=argv, cwd=cwd, timeout=timeout)
             a.save()
             audit.record("approval", id=a.id, targets=needs, command=shown)
-            notify.approval_waiting(a.id, needs, shown)
+            if self.notify:
+                notify.approval_waiting(a.id, needs, shown)
             reason = "shell syntax always asks" if policy_argv is None else "not on the allowlist"
             notes.append(
                 f"status=pending_approval id=a:{a.id} targets={','.join(needs)} ({reason}; "

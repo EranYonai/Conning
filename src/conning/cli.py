@@ -43,14 +43,20 @@ def _targets(args: argparse.Namespace) -> int:
 
 
 def _run(args: argparse.Namespace) -> int:
+    from conning import admin
+
     argv = args.argv
     if not argv:
-        print("error: give the command after the target, e.g. conn run lab-lin1 uname -a")
+        print(f"error: give the command after the target, e.g. conn run {args.target} uname -a")
         return 1
     common = dict(cwd=args.cwd, wait=args.wait, timeout=args.timeout, max_bytes=args.max_bytes, grep=args.grep)
+    core, io = _core(), _io()
+    core.notify = not io.tty  # a human at this terminal is asked right here, no pop-up needed
     if args.shell:
-        return _emit(_core().run(args.target, cmd=" ".join(argv), **common))
-    return _emit(_core().run(args.target, argv=argv, **common))
+        result = core.run(args.target, cmd=" ".join(argv), **common)
+    else:
+        result = core.run(args.target, argv=argv, **common)
+    return admin.run_here(core, io, result, wait=args.wait, max_bytes=args.max_bytes, grep=args.grep)
 
 
 def _read(args: argparse.Namespace) -> int:

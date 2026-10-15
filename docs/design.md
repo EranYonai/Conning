@@ -75,7 +75,8 @@ remember the same rule and leave the same audit entry:
    elicitation by itself, so turn it off for a client that would do that instead of asking you.
 2. **`conn watch`**, a terminal that prints every event as it happens, new job output, and prompts for
    each pending command.
-3. **`conn approve a:<id>`**, as in M1. A desktop notification (macOS, Linux; `CONNING_NOTIFY=0` turns
+3. **`conn approve a:<id>`**, as in M1. When a human runs `conn run` at a terminal, it asks right
+   there instead and prints the result (D40). A desktop notification (macOS, Linux; `CONNING_NOTIFY=0` turns
    it off) says a command is waiting.
 
 `conn allow <target> <words>` adds a rule after asking at a terminal; `conn deny` removes one and needs
@@ -121,6 +122,7 @@ no terminal, since taking trust away is always safe. `conn allow <target>` lists
 | ~~D33~~ | ~~Approving in the agent client is opt-in~~ | Superseded by D38 | superseded |
 | D38 | Approving in the agent client is on by default for every MCP client that supports elicitation (`--no-approve-in-client` turns it off), asked before the command is queued, through the SDK's resolver so both protocol versions work | Eran: a general MCP for all agents, and in-chat approval should be on; clients without elicitation fall back to `conn watch` / `conn approve` | locked |
 | D39 | Every target allows a built-in read-only list (system info, processes, disks, network, service status, logs), checked per command so changing forms still ask; bare program names only; no file readers; `safe = false` opts a target out | Eran (#4): new machines shouldn't need an approval for `uname`; `read` already covers files | locked |
+| D40 | `conn run` at a terminal asks right there (once, always, deny) and prints the result; without a terminal it returns `a:<id>` as before. A target name where the command starts is an error that suggests `a,b` | Eran, first real run: copying an id into `conn approve` is clumsy, and the CLI's own hint made a second target name look required | locked |
 | D34 | One audit log in the state dir, JSON lines, each with the sha256 of the line before; `conn watch` and `conn doctor` read it | One source for the live view and for after-the-fact review; edits show up | locked |
 | D35 | `conn allow` needs a terminal and a yes; `conn deny` does not | Granting trust is human-only (like approve and lease); revoking it is always safe | locked |
 | D36 | `conn watch` reads only local files (audit log, job logs) and never contacts a target | Runs beside any number of agents without racing their reads | locked |

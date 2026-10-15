@@ -7,6 +7,9 @@
   says when a command is waiting (`CONNING_NOTIFY=0` turns it off).
 - `conn run` at a terminal asks right there when a command needs approval, and prints the result; a
   target name typed where the command starts is caught with a hint to use `a,b`.
+- `conn targets` shows the user each target logs in as; `conn add <name> --like <target> --user <u>` adds the
+  same machine as another user.
+- Jobs on Linux and macOS targets get the PATH of a login shell, so tools in `~/.local/bin` or `/opt` are found.
 - `conn watch`: every command, decision and job exit as it happens, new job output, and approval prompts.
 - Audit log in the state dir (`audit.jsonl`), hash-chained; `conn doctor` reports edits.
 - Built-in read-only list: `uname`, `hostname`, `df`, `ps`, `ls`, `ip addr`, `systemctl status`, `journalctl`,

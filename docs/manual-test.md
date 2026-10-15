@@ -63,7 +63,7 @@ makes it behave like an agent with no terminal.)
 ```sh
 conn run lab uname -a        # expect: blocked  lab  (target is pending; ...)
 conn approve lab             # shows the host key fingerprint; type y
-conn ls --check              # expect: lab  linux  bash  tags=demo  mode=ask  reach=ok
+conn ls --check              # expect: lab  linux  bash  user=<you>  tags=demo  mode=ask  reach=ok
 ```
 If approving fails, the target stays pending and `conn ls` says why, e.g. `mode=pending (login check failed: ...)`.
 

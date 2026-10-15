@@ -77,12 +77,24 @@ def add(
     mode: str = "ask",
     tags: list[str] | None = None,
     retry: bool = False,
+    like: str | None = None,
 ) -> int:
     try:
         targets = load_targets(paths.targets_file())
     except TargetFileError as e:
         io.say(f"error: {e}")
         return 1
+    if like is not None:  # the same machine as another target, usually as another user
+        base = targets.get(like)
+        if base is None:
+            io.say(f"error: no target {like} to copy")
+            return 1
+        host, port, os_name = host or base.host, port if port != 22 else base.port, os_name or base.os
+        user = user or base.user
+        tags = tags or list(base.tags)
+        auth = auth or base.auth
+        if user == base.user:  # same login: same credentials
+            secret, key = secret or base.secret, key or base.key
     if not NAME_RE.match(name):
         io.say("error: target names use letters, digits, '.', '_' and '-'")
         return 1

@@ -23,7 +23,14 @@ def posix_start(job_id: str, command: str, *, cwd: str | None, timeout: int, env
     delimiter = f"CONNING_EOF_{job_id}"
     if delimiter in command:
         raise ValueError("command contains the heredoc delimiter")
-    body = []
+    # A non-interactive ssh session skips the login profile, so tools installed under ~/.local/bin
+    # or /opt are "not found". Adopt the PATH a login shell would have; its other output is dropped.
+    show = '\'printf "\\nCONNING_PATH=%s\\n" "$PATH"\''
+    body = [
+        f"p=$({{ bash -lc {show} || sh -lc {show}; }} 2>/dev/null </dev/null"
+        " | sed -n 's/^CONNING_PATH=//p' | tail -n 1)",
+        '[ -n "$p" ] && PATH=$p && export PATH',
+    ]
     if cwd:
         body.append(f"cd -- {shlex.quote(cwd)} || exit 97")
     body.append(command)

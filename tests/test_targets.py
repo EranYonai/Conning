@@ -31,7 +31,8 @@ def test_loads_and_lists_without_secrets(tmp_path):
     assert targets["lab-win1"].shell == "pwsh"
     assert targets["lab-lin1"].mode == "ask"  # D8: new lab targets start in ask
     out = listing(list(targets.values()))
-    assert "192.0.2.5" not in out and "root" not in out and "keychain" not in out
+    assert "192.0.2.5" not in out and "keychain" not in out
+    assert "user=root" in out  # D41: which login a target uses is not a secret
     assert "mode=pending" in out
 
 

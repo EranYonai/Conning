@@ -23,6 +23,7 @@ def _state(tmp_path, monkeypatch):
     """Job output and approvals never land in the real state dir."""
     monkeypatch.setenv("CONNING_STATE", str(tmp_path / "conning-state"))
     monkeypatch.setenv("CONNING_NOTIFY", "0")  # no desktop pop-ups from test runs
+    monkeypatch.setenv("CONNING_IN_CONTAINER", "0")  # the same answers whether or not CI runs in a container
 
 
 @pytest.fixture

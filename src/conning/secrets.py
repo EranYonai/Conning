@@ -16,6 +16,17 @@ import urllib.parse
 
 KEYCHAIN_SERVICE = "conning"
 REDACTED = "[REDACTED]"
+NO_KEYCHAIN = (
+    "the OS keychain is not reachable in a container (D46); use env: or op://, "
+    "or mount your ssh-agent socket and use a key"
+)
+
+
+def in_container() -> bool:
+    """True in Conning's own image, and in most other containers. Only changes what we say, not policy."""
+    if (value := os.environ.get("CONNING_IN_CONTAINER")) is not None:
+        return value not in ("", "0")
+    return os.path.exists("/.dockerenv") or os.path.exists("/run/.containerenv")
 
 
 class SecretError(RuntimeError):
@@ -29,6 +40,8 @@ def resolve(ref: str) -> str:
             raise SecretError(f"secret {ref}: environment variable is not set")
         return value
     if ref.startswith("keychain:"):
+        if in_container():
+            raise SecretError(f"secret {ref}: {NO_KEYCHAIN}")
         service, _, account = ref[len("keychain:") :].rpartition("/")
         value = _keyring().get_password(service or KEYCHAIN_SERVICE, account)
         if value is None:

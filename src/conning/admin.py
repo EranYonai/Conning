@@ -69,7 +69,7 @@ def add(
     *,
     host: str | None = None,
     user: str | None = None,
-    port: int = 22,
+    port: int | None = None,
     auth: str | None = None,
     secret: str | None = None,
     key: str | None = None,
@@ -89,7 +89,7 @@ def add(
         if base is None:
             io.say(f"error: no target {like} to copy")
             return 1
-        host, port, os_name = host or base.host, port if port != 22 else base.port, os_name or base.os
+        host, port, os_name = host or base.host, port or base.port, os_name or base.os
         user = user or base.user
         tags = tags or list(base.tags)
         auth = auth or base.auth
@@ -132,7 +132,7 @@ def add(
         name=name,
         host=host,
         user=user,
-        port=port,
+        port=port or 22,
         auth=auth,
         secret=secret,
         key=key,

@@ -66,3 +66,11 @@ def test_jobs_find_tools_on_the_login_path(core, transport):
     grant_lease("lab", 5)
     out = core.run("lab", argv=["labtool"], wait=30)
     assert out.startswith("exit=0") and "labtool ran" in out and "noise" not in out
+
+
+def test_like_keeps_an_explicit_port(core):
+    write_targets(target("lab", user="root", port=2222))
+    assert admin.add(core, FakeIO(tty=False), "lab22", user="u", port=22, like="lab") == 0
+    assert saved("lab22").port == 22
+    assert admin.add(core, FakeIO(tty=False), "plain", host="h", user="u") == 0
+    assert saved("plain").port == 22

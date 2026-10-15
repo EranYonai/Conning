@@ -18,7 +18,7 @@ def run_here(core, io, *argv, wait=5):
 
 def test_a_target_name_in_the_command_is_caught(core):
     write_targets(target("lab"), target("lab-lin1"))
-    out = core.run("lab", argv=["lab-lin1", "cortest", "status"])
+    out = core.run("lab", argv=["lab-lin1", "labtool", "status"])
     assert out == (
         "error: 'lab-lin1' is a target, not a command; to run on several targets, "
         "join them with commas: lab,lab-lin1 <command>"

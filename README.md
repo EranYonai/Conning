@@ -43,7 +43,7 @@ claude mcp add conning -- uvx conning mcp
 
 | Tool | What it does |
 |---|---|
-| `targets(filter?, check?)` | One line per target: name, OS, shell, tags, mode. Never a host, user or secret. |
+| `targets(filter?, check?)` | One line per target: name, OS, shell, user, tags, mode. Never a host or secret. |
 | `run(target, cmd \| argv, wait=30, max_bytes=8192, ...)` | Runs on one target, a list or `tag:<tag>`. Exit code first. Still running after `wait` seconds: returns a job id (`wait=0` is async). |
 | `read(id, wait?, range?, grep?, signal?)` | Long-polls a job for new lines, pages a saved output, or reads a remote file. |
 | `transfer(source, dest)` | Copies files between `local:<path>` and `<target>:<path>`, checked by sha256. |
@@ -73,9 +73,9 @@ conn read [--wait WAIT] [--range RANGE] [--grep GREP] [--signal {INT,TERM,KILL}]
 conn transfer source dest
     Copy files: local:<path> to <target>:<path>, or back. sha256 checked.
 
-conn add [--host HOST] [--user USER] [--port PORT] [--auth {ssh-agent,key,password}]
-                [--secret SECRET] [--key KEY] [--os {linux,windows,darwin}]
-                [--mode {observe,ask,lease}] [--tag TAG] [--retry]
+conn add [--host HOST] [--user USER] [--like TARGET] [--port PORT]
+                [--auth {ssh-agent,key,password}] [--secret SECRET] [--key KEY]
+                [--os {linux,windows,darwin}] [--mode {observe,ask,lease}] [--tag TAG] [--retry]
                 name
     Add a target. Without a terminal it is saved as pending until a human approves it.
 
@@ -114,6 +114,10 @@ conn help [--markdown]
 ```
 <!-- conn-help:end -->
 
+A target is one login on one machine. To use the same machine as another user, add it again:
+`conn add lab-tester --like lab --user tester` copies the host, port, OS and tags and asks for the new
+user's password. `conn targets` shows which user each target uses.
+
 A target you add with `conn add` from an agent session is saved as **pending**. It does nothing until
 the human runs `conn approve <name>`, which shows the host, the pinned host-key fingerprint and where
 the secret comes from.
@@ -127,7 +131,8 @@ two words, or deny), and the agent picks up the result with `read a:<id>`:
   the two below. If a client would answer such prompts by itself instead of asking you, run the server
   as `conn mcp --no-approve-in-client`.
 - **In `conn watch`**, which also shows every command and its output as it happens.
-- **With `conn approve a:<id>`** in any terminal.
+- **With `conn approve a:<id>`** in any terminal. When you run `conn run` yourself at a terminal, it
+  just asks you there and prints the result.
 
 Read-only commands such as `uname`, `hostname`, `df`, `ps`, `ls`, `ip addr`, `systemctl status` and
 `journalctl` run without asking on every target; each is checked so its changing forms (`hostname x`,

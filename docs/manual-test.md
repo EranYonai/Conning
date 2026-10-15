@@ -63,7 +63,7 @@ makes it behave like an agent with no terminal.)
 ```sh
 conn run lab uname -a        # expect: blocked  lab  (target is pending; ...)
 conn approve lab             # shows the host key fingerprint; type y
-conn ls --check              # expect: lab  linux  bash  tags=demo  mode=ask  reach=ok
+conn ls --check              # expect: lab  linux  bash  user=<you>  tags=demo  mode=ask  reach=ok
 ```
 If approving fails, the target stays pending and `conn ls` says why, e.g. `mode=pending (login check failed: ...)`.
 
@@ -71,14 +71,13 @@ If approving fails, the target stays pending and `conn ls` says why, e.g. `mode=
 
 ```sh
 conn run lab uname -a        # expect: exit=0 right away: uname is on the built-in read-only list
-conn run lab date
-```
-Expect: `status=pending_approval id=a:<id> ...` (`date` can set the clock, so it isn't on the list). Then:
-
-```sh
-conn approve a:<id>          # type e (always allow 'date'); it then prints exit=0 and the date
-conn read a:<id>             # what the agent sees: the same result
+conn run lab date            # asks right here (`date` can set the clock, so it isn't on the list):
+                             # type e (always allow 'date'); expect exit=0 and the date
 conn run lab date -u         # expect: exit=0 right away, no approval (the rule matched)
+conn run lab lab whoami      # expect: error: 'lab' is a target, not a command; nothing runs
+conn run lab touch /tmp/x < /dev/null   # like an agent: status=pending_approval id=a:<id>
+conn approve a:<id>          # type a; it prints exit=0
+conn read a:<id>             # what the agent sees: the same result
 ```
 
 ## 5. Lease, long jobs, signals, timeouts

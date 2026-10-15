@@ -17,7 +17,7 @@ from conning import paths, ssh
 from conning.core import Core
 from conning.policy import remembered_rule, split_command
 from conning.secrets import SecretError, store_in_keychain
-from conning.state import Approval, grant_lease, set_problem
+from conning.state import Approval, Job, grant_lease, set_problem
 from conning.targets import AUTHS, MODES, NAME_RE, Target, TargetFileError, load_targets, save_targets
 
 MAX_LEASE_MINUTES = 60
@@ -200,6 +200,11 @@ def approve(core: Core, io: IO, what: str, *, always: bool = False) -> int:
         approved = Approval.load(what[2:])
         if code == 0 and approved is not None and approved.status == "approved":
             io.say(core.read(what, wait=APPROVE_WAIT))  # start it and show the result here too
+            for job_id in (Approval.load(what[2:]) or approved).jobs.values():
+                job = Job.load(job_id)
+                if job is not None:  # what the human saw still counts as unread for the agent
+                    job.seen = 0
+                    job.save()
         return code
     return approve_target(core, io, what)
 

@@ -353,3 +353,15 @@ def test_declined_pin_and_missing_keys_are_recorded(core, keyscan, monkeypatch):
     monkeypatch.setattr(ssh, "no_ssh_hint", lambda t: "hint")
     admin.approve(core, FakeIO(), "lab")
     assert "pending (no SSH server answered)" in core.targets()
+
+
+@pytest.mark.skipif(not __import__("shutil").which("sh"), reason="needs a POSIX sh")
+def test_approving_shows_the_result_and_the_agent_still_gets_it(core, home):
+    """Found replaying the guide: the human's view used to mark the output as read."""
+    write_targets(target())
+    out = core.run("lab", argv=["echo", "hello-from-lab"])
+    approval_id = out.split("id=a:")[1].split()[0]
+    io = FakeIO("a")
+    assert admin.approve(core, io, f"a:{approval_id}") == 0
+    assert "hello-from-lab" in io.text
+    assert "hello-from-lab" in core.read(f"a:{approval_id}")

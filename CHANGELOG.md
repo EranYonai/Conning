@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 (2026-10-15)
 
 - The MCP server ships as a container image too: `ghcr.io/eranyonai/conning` (amd64 and arm64),
   built from the OpenSSH client plus Conning, running `conn` as the owner of the `/conning` folder, its

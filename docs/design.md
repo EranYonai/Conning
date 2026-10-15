@@ -6,7 +6,7 @@ without the agent ever seeing a secret.
 
 The design came out of a structured debate between four sub-agents (product, security, agent
 protocol, contrarian), a survey of open-source prior art, and a section-by-section walkthrough with
-Eran. The story is in [build-log.html](build-log.html).
+Eran. The story is in the [development blog](blog.html).
 
 ## Shape
 

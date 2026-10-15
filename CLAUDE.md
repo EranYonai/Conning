@@ -26,4 +26,4 @@ uv run conn help --markdown   # paste into README.md between the conn-help marke
 ## Docs
 
 When a decision changes, update the table in `docs/design.md` (supersede rows rather than deleting
-them) and add a dated entry to `docs/build-log.html`.
+them) and add a dated post to `docs/blog.html`.

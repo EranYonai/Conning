@@ -72,7 +72,8 @@ call only when it returns, so the agent gets progress by polling `read`.
 | D11 | Project is Conning (CLI `conn`); machines are "targets" | Free on PyPI and npm; agents know "target" | locked |
 | D12 | No `{{secret:x}}` placeholders in agent commands in v0.1 | A placeholder in a free command can leak; `inject` env covers it | proposed |
 | D13 | Build our own; adopt ideas from prior art, not dependencies | Trust ourselves, adopt good ideas | locked |
-| D14 | `max_bytes=8192` default argument, raisable to a 64 KB ceiling | Lean by default, more on demand | locked |
+| D14 | `max_bytes=8192` default argument, raisable to a ceiling | Lean by default, more on demand | locked |
+| ~~D14~~ | ~~Ceiling of 64 KB~~ | Superseded by D30 | superseded |
 | D15 | Progress streams to the human; the agent polls `read` for new lines | Models see a call only when it returns | locked |
 | D16 | Async through `wait` (`0` returns a job id at once) | No extra tool | locked |
 | D17 | Plain text by default, `--json` on request | About 40% fewer tokens | locked |
@@ -88,6 +89,9 @@ call only when it returns, so the agent gets progress by polling `read`.
 | D27 | Unit tests run Conning's real remote scripts with the local `sh` behind a fake transport; CI gates coverage at 95% | Tests the job logic itself without a server | locked |
 | D28 | Config dir (targets, pinned keys, leases) is only read when commands run; job output, approvals and generated ssh configs live in a state dir (`XDG_STATE_HOME`, `CONNING_STATE`) | Agent sandboxes mount config read-only; only `add`, `approve`, `rm`, `lease` change trust | locked |
 | D29 | `conn run <target> <command...>`: conn's options may sit before or right after the target; the first other word starts the remote command, flags included; `--` optional | Agents write `conn run lab uname -a` and hit argparse errors otherwise | locked |
+| D30 | The `max_bytes` ceiling is 16 KB | Eran: 8 to 16 KB; one call never floods the context, paging covers the rest | locked |
+| D31 | No listing in the official MCP Registry yet | Eran: maybe in the future | locked |
+| D32 | The tool-schema size stays a test cap, not a published token budget | Eran: no need to publish it | locked |
 
 ## Ideas adopted from prior art
 
@@ -97,8 +101,8 @@ call only when it returns, so the agent gets progress by polling `read`.
 4. A timeout that hands control back with a handle instead of killing (OpenHands).
 5. Job handles with offset and tail reads (Desktop Commander, E2B).
 6. One result envelope everywhere (Fabric, Ansible, pypsrp).
-7. Measure and publish the tool-schema cost (mcp-ssh-manager: 37 tools, about 43.5k tokens). Ours is
-   checked in `tests/test_cli_and_server.py`.
+7. Measure the tool-schema cost (mcp-ssh-manager: 37 tools, about 43.5k tokens). Ours is capped in
+   `tests/test_cli_and_server.py` (D32).
 8. Connector abstraction: SSH now, WinRM/PSRP and local later (pyinfra).
 9. Import existing inventory from `~/.ssh/config`.
 10. Everything expires: leases and remembered approvals (E2B, Teleport).
@@ -118,6 +122,4 @@ call only when it returns, so the agent gets progress by polling `read`.
 
 ## Open questions
 
-- Which ceiling should `max_bytes` have by default (64 KB today)?
 - When does WinRM become a second connector for old Windows images?
-- Should Conning be listed in the official MCP Registry?

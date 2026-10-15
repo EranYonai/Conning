@@ -250,6 +250,9 @@ status=running job=j:3fa9 dur=20.0s +41 lines
   <div class="tablewrap"><table>
     <thead><tr><th>#</th><th>Decision</th><th>Why</th><th>Status</th></tr></thead>
     <tbody>
+      <tr><td class="id">D32</td><td>The tool-schema size stays a test cap, not a published token budget</td><td>Eran: no need to publish it</td><td><span class="st locked">locked</span></td></tr>
+      <tr><td class="id">D31</td><td>No listing in the official MCP Registry yet</td><td>Eran: maybe in the future</td><td><span class="st locked">locked</span></td></tr>
+      <tr><td class="id">D30</td><td>The <code>max_bytes</code> ceiling is 16 KB</td><td>Eran: 8 to 16 KB; one call never floods the context, and paging covers the rest</td><td><span class="st locked">locked</span></td></tr>
       <tr><td class="id">D29</td><td><code>conn run &lt;target&gt; &lt;command...&gt;</code>: conn's options go before or right after the target; the first other word starts the remote command, flags included; <code>--</code> is optional</td><td>Agents write <code>conn run lab uname -a</code> and kept hitting parser errors</td><td><span class="st locked">locked</span></td></tr>
       <tr><td class="id">D28</td><td>The config dir (targets, pinned keys, leases) is only read when commands run; job output, approvals and generated SSH configs live in a separate state dir</td><td>Agent sandboxes mount config read-only; only <code>add</code>, <code>approve</code>, <code>rm</code> and <code>lease</code> change trust</td><td><span class="st locked">locked</span></td></tr>
       <tr><td class="id">D27</td><td>Unit tests run Conning's real remote scripts with the local <code>sh</code> behind a fake transport; CI gates coverage at 95%</td><td>Eran: mock with unit tests as much as possible, 95%+ coverage</td><td><span class="st locked">locked</span></td></tr>
@@ -262,7 +265,7 @@ status=running job=j:3fa9 dur=20.0s +41 lines
       <tr><td class="id">D4</td><td>Single developer on their own machine</td><td>Eran, Q2: keep v0.1 small</td><td><span class="st locked">locked</span></td></tr>
       <tr class="old"><td class="id">D4</td><td>A target file teams can commit and share</td><td>Superseded by D4 (single dev)</td><td><span class="st sup">superseded</span></td></tr>
       <tr><td class="id">D5</td><td>Four agent tools: targets, run, read, transfer</td><td>Eran, Q4: tool schemas cost tokens every turn; fewer tools beat more</td><td><span class="st locked">locked</span></td></tr>
-      <tr><td class="id">D14</td><td>Output cap is an argument: <code>max_bytes=8192</code> by default, raised by the agent when needed, up to a ceiling you configure</td><td>Eran: lean by default, more on demand</td><td><span class="st locked">locked</span></td></tr>
+      <tr><td class="id">D14</td><td>Output cap is an argument: <code>max_bytes=8192</code> by default, raised by the agent when needed, up to a ceiling (D30)</td><td>Eran: lean by default, more on demand</td><td><span class="st locked">locked</span></td></tr>
       <tr><td class="id">D15</td><td>Progress streams to the human (MCP progress, <code>conn watch</code>, a live terminal); the agent gets new lines on each <code>read</code></td><td>Eran wants a sense of progress; models only see a call when it returns</td><td><span class="st locked">locked</span></td></tr>
       <tr><td class="id">D16</td><td>Async through <code>wait</code>: <code>0</code> returns a job id at once, the default is 30 s, longer runs become jobs</td><td>Eran: optional async calls without adding a tool</td><td><span class="st locked">locked</span></td></tr>
       <tr><td class="id">D17</td><td>Plain-text output by default, <code>--json</code> on request</td><td>Eran, Q5: about 40% fewer tokens</td><td><span class="st locked">locked</span></td></tr>
@@ -287,9 +290,6 @@ status=running job=j:3fa9 dur=20.0s +41 lines
   <div class="col" id="open">
     <h3>Open questions</h3>
     <ul class="open">
-      <li>Should Conning also be listed in the official MCP Registry?</li>
-      <li>What token budget should the four tool schemas stay under, and should we publish it?</li>
-      <li>What ceiling should <code>max_bytes</code> have by default?</li>
       <li>When does WinRM become a second connector for old Windows images?</li>
     </ul>
   </div>

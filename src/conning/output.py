@@ -5,7 +5,7 @@ followed by the head and tail of the output, never more than `max_bytes` in tota
 """
 
 DEFAULT_MAX_BYTES = 8192
-MAX_BYTES_CEILING = 65536  # the most an agent may ask for in one call
+MAX_BYTES_CEILING = 16384  # the most an agent may ask for in one call (D30)
 
 
 def clamp_max_bytes(requested: int | None) -> int:

@@ -44,6 +44,7 @@ class LocalTransport:
         self.env: dict[str, dict[str, str]] = {}
         self.raise_on: str | None = None
         self.copy_result: tuple[int, bytes] | None = None
+        self.secret_error: str | None = None  # make secrets() fail, like an unset env: reference
 
     def exec(self, t, command, *, stdin=None, timeout=60):
         self.calls.append((t.name, command, stdin))
@@ -73,6 +74,10 @@ class LocalTransport:
         return self.env.get(t.name, {})
 
     def secrets(self, t):
+        if self.secret_error:
+            from conning.secrets import SecretError
+
+            raise SecretError(self.secret_error)
         return list(self.inject_env(t).values())
 
     def is_ssh_failure(self, rc, output):

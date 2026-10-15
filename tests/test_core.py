@@ -428,3 +428,19 @@ def test_helpers():
 @pytest.mark.parametrize("bad", ["../x", "a b"])
 def test_job_ids_are_validated(core, bad):
     assert core.read(f"j:{bad}").startswith("error: no job")
+
+
+@needs_sh
+def test_unresolvable_secret_is_an_error_not_a_crash(core, transport):
+    """Found by the MCP smoke test: an unset env: reference used to raise out of read."""
+    shell_lab()
+    f = transport.remote_home / "app.log"
+    f.write_text("token=abc\n")
+    out = core.run("lab", argv=["sh", "-c", "echo one; sleep 1; echo two"], wait=0)
+    job_id = out.split("job=j:")[1].split()[0]
+    transport.secret_error = "secret env:DEMO_TOKEN: environment variable is not set"
+    assert core.read(f"lab:{f}") == "error: secret env:DEMO_TOKEN: environment variable is not set"
+    assert "token=abc" not in core.read(f"lab:{f}")
+    assert core.read(f"j:{job_id}").startswith("status=running")  # nothing shown that could not be redacted
+    transport.secret_error = None
+    assert "two" in core.read(f"j:{job_id}", wait=10)

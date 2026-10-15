@@ -187,6 +187,7 @@ class Core:
             return
         while True:
             try:
+                hide = self.transport.secrets(t)  # resolved first: output that can't be redacted is never shown
                 rc_ssh, out = self.transport.exec(
                     t, "sh -s", stdin=remote.posix_poll(job.id, job.fetched, POLL_CHUNK).encode(), timeout=60
                 )
@@ -194,7 +195,7 @@ class Core:
             except (SSHError, SecretError, ValueError):
                 rc, data, rc_ssh = None, b"", 255
             if data:
-                job.append(redact(data.decode(errors="replace"), self.transport.secrets(t)))
+                job.append(redact(data.decode(errors="replace"), hide))
                 job.fetched += len(data)
             if rc is not None and len(data) < POLL_CHUNK:
                 job.rc, job.finished = rc, self.clock()
@@ -305,13 +306,14 @@ class Core:
         if t.status == "pending":
             return f"error: {name} is pending; human runs: conn approve {name}"
         try:
+            hide = self.transport.secrets(t)
             if t.os == "windows":
                 rc, out = self.transport.exec(t, remote.pwsh_command(remote.pwsh_read_file(path, range_), t.shell))
             else:
                 rc, out = self.transport.exec(t, "sh -s", stdin=remote.posix_read_file(path, range_).encode())
         except (SSHError, SecretError, ValueError) as e:
             return f"error: {e}"
-        text = redact(out.decode(errors="replace"), self.transport.secrets(t))
+        text = redact(out.decode(errors="replace"), hide)
         if rc != 0:
             return f"error: {name}:{path}: exit={rc}\n{text.strip()[:2000]}"
         header = f"file={name}:{path}" + (f" lines={range_}" if range_ else "") + " untrusted"

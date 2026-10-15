@@ -12,8 +12,9 @@
 - Jobs on Linux and macOS targets get the PATH of a login shell, so tools in `~/.local/bin` or `/opt` are found.
 - Windows jobs run detached (created through WMI, outside the ssh session), so they survive a dropped
   connection and support `read --signal` and timeouts like POSIX jobs. Scripts reach PowerShell over stdin.
-- `conn mcp install claude|codex|cursor` adds the server and denies raw `ssh`/`scp`/`sftp`, the human-only
-  `conn` commands and reads of Conning's config dir; merges with existing files and keeps a backup.
+- `conn mcp install claude|codex|cursor|opencode|pi` adds the server and denies raw `ssh`/`scp`/`sftp`, the human-only
+  `conn` commands and reads of Conning's config dir (pi has no rules, so only the server); merges with
+  existing files and keeps a backup.
 - `conn watch`: every command, decision and job exit as it happens, new job output, and approval prompts.
 - Audit log in the state dir (`audit.jsonl`), hash-chained; `conn doctor` reports edits.
 - Built-in read-only list: `uname`, `hostname`, `df`, `ps`, `ls`, `ip addr`, `systemctl status`, `journalctl`,

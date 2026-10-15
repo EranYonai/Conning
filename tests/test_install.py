@@ -156,3 +156,42 @@ def test_cli_wiring(fake_home, monkeypatch):
     assert cli.main(["mcp", "install", "cursor"]) == 0
     assert seen == [("codex", True), ("cursor", False)]
     assert Path(fake_home).exists()
+
+
+def test_opencode_adds_server_and_last_match_deny_rules(fake_home, home, monkeypatch):
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    path = fake_home / ".config" / "opencode" / "opencode.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({"model": "x", "permission": {"bash": {"ssh *": "ask", "*": "allow"}, "edit": "ask"}}))
+    io = FakeIO(tty=False)
+    assert install.install(io, "opencode") == 0
+    data = json.loads(path.read_text())
+    assert data["model"] == "x"
+    assert data["mcp"]["conning"] == {"type": "local", "command": ["/opt/bin/conn", "mcp"], "enabled": True}
+    bash = data["permission"]["bash"]
+    assert list(bash)[:3] == ["*", "ssh *", "scp *"]  # moved after the catch-all: the last match wins
+    assert bash["ssh *"] == "deny" and bash["conn approve *"] == "deny"
+    assert data["permission"]["edit"]["*"] == "ask"
+    config = install._home_relative(home, "/")
+    assert data["permission"]["read"] == {f"{config}/**": "deny"}
+    io = FakeIO(tty=False)
+    install.install(io, "opencode")
+    assert io.said == ["opencode: already installed, nothing to change"]
+
+
+def test_opencode_spreads_a_one_word_permission(fake_home, monkeypatch):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(fake_home / "xdg"))
+    path = fake_home / "xdg" / "opencode" / "opencode.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({"permission": "allow"}))
+    install.install(FakeIO(tty=False), "opencode")
+    permission = json.loads(path.read_text())["permission"]
+    assert permission["*"] == "allow" and permission["bash"]["sftp *"] == "deny"
+
+
+def test_pi_adds_the_server_and_says_it_has_no_rules(fake_home):
+    io = FakeIO(tty=False)
+    assert install.install(io, "pi") == 0
+    data = json.loads((fake_home / ".pi" / "agent" / "mcp.json").read_text())
+    assert data["mcpServers"]["conning"] == {"command": "/opt/bin/conn", "args": ["mcp"]}
+    assert io.said[-1].startswith("note: pi has no permission rules")

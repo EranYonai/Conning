@@ -92,9 +92,6 @@ class LocalTransport:
             raise SecretError(self.secret_error)
         return list(self.inject_env(t).values())
 
-    def is_ssh_failure(self, rc, output):
-        return rc == 255
-
     def explain(self, t, rc, output):
         return f"explained rc={rc}"
 

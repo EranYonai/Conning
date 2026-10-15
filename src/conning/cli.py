@@ -7,7 +7,7 @@ import argparse
 import os
 import sys
 
-from conning import __version__
+from conning import __version__, admin, doctor, install, watch
 from conning.output import DEFAULT_MAX_BYTES, MAX_BYTES_CEILING
 from conning.secrets import SecretError
 from conning.ssh import SSHError
@@ -21,9 +21,7 @@ def _core():
 
 
 def _io():
-    from conning.admin import ConsoleIO
-
-    return ConsoleIO()
+    return admin.ConsoleIO()
 
 
 def _emit(text: str) -> int:
@@ -31,115 +29,30 @@ def _emit(text: str) -> int:
     return 1 if text.startswith("error:") else 0
 
 
-def _targets(args: argparse.Namespace) -> int:
-    return _emit(_core().targets(args.filter, args.check))
-
-
 def _run(args: argparse.Namespace) -> int:
-    from conning import admin
-
-    argv = args.argv
-    if not argv:
+    if not args.argv:
         print(f"error: give the command after the target, e.g. conn run {args.target} uname -a")
         return 1
     common = dict(cwd=args.cwd, wait=args.wait, timeout=args.timeout, max_bytes=args.max_bytes, grep=args.grep)
     core, io = _core(), _io()
     core.notify = not io.tty  # a human at this terminal is asked right here, no pop-up needed
-    if args.shell:
-        result = core.run(args.target, cmd=" ".join(argv), **common)
-    else:
-        result = core.run(args.target, argv=argv, **common)
+    command = {"cmd": " ".join(args.argv)} if args.shell else {"argv": args.argv}
+    result = core.run(args.target, **command, **common)
     return admin.run_here(core, io, result, wait=args.wait, max_bytes=args.max_bytes, grep=args.grep)
 
 
-def _read(args: argparse.Namespace) -> int:
-    return _emit(
-        _core().read(
-            args.id, wait=args.wait, range=args.range, grep=args.grep, signal=args.signal, max_bytes=args.max_bytes
-        )
-    )
-
-
-def _transfer(args: argparse.Namespace) -> int:
-    return _emit(_core().transfer(args.source, args.dest))
-
-
-def _add(args: argparse.Namespace) -> int:
-    from conning import admin
-
+def _add(a: argparse.Namespace) -> int:
     return admin.add(
-        _core(),
-        _io(),
-        args.name,
-        host=args.host,
-        user=args.user,
-        port=args.port,
-        auth=args.auth,
-        secret=args.secret,
-        key=args.key,
-        os_name=args.os,
-        mode=args.mode,
-        tags=args.tag,
-        retry=args.retry,
-        like=args.like,
-    )
-
-
-def _approve(args: argparse.Namespace) -> int:
-    from conning import admin
-
-    return admin.approve(_core(), _io(), args.what, always=args.always)
-
-
-def _rm(args: argparse.Namespace) -> int:
-    from conning import admin
-
-    return admin.remove(_io(), args.name)
-
-
-def _test(args: argparse.Namespace) -> int:
-    from conning import admin
-
-    return admin.test(_core(), _io(), args.name)
-
-
-def _lease(args: argparse.Namespace) -> int:
-    from conning import admin
-
-    return admin.lease(_io(), args.name, args.minutes)
-
-
-def _import(args: argparse.Namespace) -> int:
-    from conning import admin
-
-    return admin.import_ssh_config(_io(), args.match)
-
-
-def _allow(args: argparse.Namespace) -> int:
-    from conning import admin
-
-    return admin.allow(_io(), args.target, args.words)
-
-
-def _deny(args: argparse.Namespace) -> int:
-    from conning import admin
-
-    return admin.deny(_io(), args.target, args.words)
+        _core(), _io(), a.name, host=a.host, user=a.user, port=a.port, auth=a.auth, secret=a.secret, key=a.key,
+        os_name=a.os, mode=a.mode, tags=a.tag, retry=a.retry, like=a.like,
+    )  # fmt: skip
 
 
 def _watch(args: argparse.Namespace) -> int:
-    from conning.watch import watch
-
     try:
-        return watch(_core(), _io(), history=args.history, prompt=not args.no_prompt)
+        return watch.watch(_core(), _io(), history=args.history, prompt=not args.no_prompt)
     except KeyboardInterrupt:
         return 0
-
-
-def _doctor(args: argparse.Namespace) -> int:
-    from conning.doctor import doctor
-
-    return doctor(_io())
 
 
 def _mcp(args: argparse.Namespace) -> int:
@@ -148,14 +61,29 @@ def _mcp(args: argparse.Namespace) -> int:
 
         build_server(approve_in_client=args.approve_in_client).run("stdio")
         return 0
-    from conning.install import install
-
-    return install(_io(), args.client, dry_run=args.dry_run)
+    return install.install(_io(), args.client, dry_run=args.dry_run)
 
 
-def _help(args: argparse.Namespace) -> int:
-    print(help_markdown() if args.markdown else build_parser().format_help())
-    return 0
+HANDLERS = {
+    "targets": lambda a: _emit(_core().targets(a.filter, a.check)),
+    "run": _run,
+    "read": lambda a: _emit(
+        _core().read(a.id, wait=a.wait, range=a.range, grep=a.grep, signal=a.signal, max_bytes=a.max_bytes)
+    ),
+    "transfer": lambda a: _emit(_core().transfer(a.source, a.dest)),
+    "add": _add,
+    "approve": lambda a: admin.approve(_core(), _io(), a.what, always=a.always),
+    "import": lambda a: admin.import_ssh_config(_io(), a.match),
+    "rm": lambda a: admin.remove(_io(), a.name),
+    "test": lambda a: admin.test(_core(), _io(), a.name),
+    "lease": lambda a: admin.lease(_io(), a.name, a.minutes),
+    "allow": lambda a: admin.allow(_io(), a.target, a.words),
+    "deny": lambda a: admin.deny(_io(), a.target, a.words),
+    "watch": _watch,
+    "doctor": lambda a: doctor.doctor(_io()),
+    "mcp": _mcp,
+    "help": lambda a: print(help_markdown() if a.markdown else build_parser().format_help()) or 0,
+}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -163,17 +91,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--version", action="version", version=f"conning {__version__}")
     sub = p.add_subparsers(dest="command", metavar="<command>")
 
-    def cmd(name: str, help: str, func, aliases=()) -> argparse.ArgumentParser:
+    def cmd(name: str, help: str, aliases=()) -> argparse.ArgumentParser:
         sp = sub.add_parser(name, help=help, description=help, aliases=list(aliases))
-        sp.set_defaults(func=func)
+        sp.set_defaults(func=HANDLERS[name])
         return sp
 
     # Agent-facing: same output as the MCP tools.
-    sp = cmd("targets", "List targets: name, OS, shell, user, tags, mode. Never hosts or secrets.", _targets, ["ls"])
+    sp = cmd("targets", "List targets: name, OS, shell, user, tags, mode. Never hosts or secrets.", ["ls"])
     sp.add_argument("filter", nargs="?", help="'tag:<tag>' or comma-separated names")
     sp.add_argument("--check", action="store_true", help="probe reachability in parallel")
 
-    sp = cmd("run", "Run a command on one target, a list, or tag:<tag>. Exit code first.", _run)
+    sp = cmd("run", "Run a command on one target, a list, or tag:<tag>. Exit code first.")
     sp.add_argument("target")
     sp.add_argument("--wait", type=int, default=30, help="seconds before returning a job id (0 = async)")
     sp.add_argument("--timeout", type=int, default=3600, help="kill the command after this many seconds")
@@ -188,7 +116,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--grep", help="keep only matching lines before capping")
     sp.add_argument("argv", nargs="*", help="the command and its arguments (conn's own options go before the target)")
 
-    sp = cmd("read", "Page a job (new lines only), a saved output, an approval, or a remote file.", _read)
+    sp = cmd("read", "Page a job (new lines only), a saved output, an approval, or a remote file.")
     sp.add_argument("id", help="j:<job>, o:<output>, a:<approval>, or <target>:<path>")
     sp.add_argument("--wait", type=int, default=0, help="long-poll up to this many seconds")
     sp.add_argument("--range", help="line range, e.g. 200-260 or -50 for the last 50")
@@ -196,12 +124,12 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--signal", choices=["INT", "TERM", "KILL"])
     sp.add_argument("--max-bytes", type=int, default=DEFAULT_MAX_BYTES)
 
-    sp = cmd("transfer", "Copy files: local:<path> to <target>:<path>, or back. sha256 checked.", _transfer)
+    sp = cmd("transfer", "Copy files: local:<path> to <target>:<path>, or back. sha256 checked.")
     sp.add_argument("source")
     sp.add_argument("dest")
 
     # Target management. Without a terminal (an agent), a new target is saved as pending.
-    sp = cmd("add", "Add a target. Without a terminal it is saved as pending until a human approves it.", _add)
+    sp = cmd("add", "Add a target. Without a terminal it is saved as pending until a human approves it.")
     sp.add_argument("name")
     sp.add_argument("--host")
     sp.add_argument("--user")
@@ -214,30 +142,30 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--mode", choices=MODES, default="ask")
     sp.add_argument("--tag", action="append", default=[])
     sp.add_argument("--retry", action="store_true", help="probe an existing target again")
-    sp = cmd("approve", "Human only: make a pending target live, or allow a pending command a:<id>.", _approve)
+    sp = cmd("approve", "Human only: make a pending target live, or allow a pending command a:<id>.")
     sp.add_argument("what", help="<target> or a:<id>")
     sp.add_argument("--always", action="store_true", help="for a:<id>: remember the command's first two words")
-    sp = cmd("import", "Import hosts from ~/.ssh/config as pending targets (unsafe options dropped).", _import)
+    sp = cmd("import", "Import hosts from ~/.ssh/config as pending targets (unsafe options dropped).")
     sp.add_argument("--match", default="*")
-    cmd("rm", "Remove a target and its pinned host key.", _rm).add_argument("name")
-    cmd("test", "Probe a target: reachability, OS, shell, pinned host key.", _test).add_argument("name")
-    sp = cmd("lease", "Human only: give a target a full shell for a time box (1-60 minutes).", _lease)
+    cmd("rm", "Remove a target and its pinned host key.").add_argument("name")
+    cmd("test", "Probe a target: reachability, OS, shell, pinned host key.").add_argument("name")
+    sp = cmd("lease", "Human only: give a target a full shell for a time box (1-60 minutes).")
     sp.add_argument("name")
     sp.add_argument("--minutes", type=int, default=15)
 
-    sp = cmd("allow", "Human only: let a command run without asking (no words: list the rules).", _allow)
+    sp = cmd("allow", "Human only: let a command run without asking (no words: list the rules).")
     sp.add_argument("target", help="a name, a comma list, or tag:<tag>")
     sp.add_argument("words", nargs="*", help="the command's leading words, e.g. systemctl status")
-    sp = cmd("deny", "Remove an allow rule, so the command asks again.", _deny)
+    sp = cmd("deny", "Remove an allow rule, so the command asks again.")
     sp.add_argument("target", help="a name, a comma list, or tag:<tag>")
     sp.add_argument("words", nargs="+")
 
     # The human's live view.
-    sp = cmd("watch", "Live control room: every command on every target, job output, approval prompts.", _watch)
+    sp = cmd("watch", "Live control room: every command on every target, job output, approval prompts.")
     sp.add_argument("--history", type=int, default=10, help="show this many past events first")
     sp.add_argument("--no-prompt", action="store_true", help="show activity only; never ask")
-    cmd("doctor", "Check this machine's setup: config and state dirs, ssh, keychain, targets.", _doctor)
-    sp = cmd("mcp", "Run the MCP server on stdio, or install it into an agent client.", _mcp)
+    cmd("doctor", "Check this machine's setup: config and state dirs, ssh, keychain, targets.")
+    sp = cmd("mcp", "Run the MCP server on stdio, or install it into an agent client.")
     sp.add_argument(
         "--approve-in-client",
         action=argparse.BooleanOptionalAction,
@@ -246,11 +174,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     mcp_sub = sp.add_subparsers(dest="mcp_command", metavar="<serve|install>")
     mcp_sub.add_parser("serve", help="run the MCP server on stdio (the default)")
-    sp = mcp_sub.add_parser("install", help="add Conning to claude, codex or cursor, and deny raw ssh/scp")
-    sp.add_argument("client", choices=["claude", "codex", "cursor"])
+    sp = mcp_sub.add_parser("install", help="add Conning to an agent client, and deny it raw ssh/scp")
+    sp.add_argument("client", choices=list(install.PLANNERS))
     sp.add_argument("--dry-run", action="store_true", help="show what would change")
 
-    sp = cmd("help", "Show this help; --markdown prints the block cached in README.md.", _help)
+    sp = cmd("help", "Show this help; --markdown prints the block cached in README.md.")
     sp.add_argument("--markdown", action="store_true")
     return p
 

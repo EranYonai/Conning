@@ -5,7 +5,7 @@ from conftest import target, write_targets
 from test_admin import FakeIO
 
 from conning import admin, paths
-from conning.policy import SAFE, is_safe, safe_names, split_command
+from conning.policy import is_safe, split_command
 from conning.targets import TargetFileError, dump_targets, load_targets
 
 
@@ -98,10 +98,6 @@ def test_shell_syntax_paths_and_empty_are_not_safe():
     assert not is_safe(split_command("uname; reboot"))
     assert not is_safe(["C:\\tools\\whoami.exe"]) and not is_safe(["bin/ls"])
     assert not is_safe(None) and not is_safe([])
-
-
-def test_safe_names_lists_every_program():
-    assert safe_names().split(", ") == list(SAFE)
 
 
 def test_safe_key_is_fail_closed_and_round_trips(home):

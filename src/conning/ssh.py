@@ -8,6 +8,7 @@ variable of the ssh process, never on a command line.
 
 import base64
 import getpass
+import hashlib
 import os
 import shutil
 import socket
@@ -103,7 +104,6 @@ def config_text(t: Target, known_hosts: Path, control_dir: Path | None) -> str:
 
 @dataclass
 class Connection:
-    target: Target
     argv: list[str]  # ssh -F <conf> ... conning-target
     env: dict[str, str]
     secrets: list[str]  # resolved values used by this connection, for redaction
@@ -131,7 +131,7 @@ def connect(t: Target) -> Connection:
             DISPLAY=env.get("DISPLAY", ":0"),
             CONNING_ASKPASS_VALUE=password,
         )
-    return Connection(target=t, argv=[ssh, "-F", str(conf), "-T", ALIAS], env=env, secrets=used)
+    return Connection(argv=[ssh, "-F", str(conf), "-T", ALIAS], env=env, secrets=used)
 
 
 def _askpass_helper() -> Path:
@@ -194,8 +194,6 @@ def scan_host_keys(host: str, port: int) -> list[tuple[str, str, str]]:
 
 
 def fingerprint(key_b64: str) -> str:
-    import hashlib
-
     digest = hashlib.sha256(base64.b64decode(key_b64)).digest()
     return "SHA256:" + base64.b64encode(digest).decode().rstrip("=")
 

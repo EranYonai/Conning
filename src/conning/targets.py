@@ -8,30 +8,13 @@ import json
 import os
 import re
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 
 MODES = ("observe", "ask", "lease")
 AUTHS = ("ssh-agent", "key", "password")
 STATUSES = ("active", "pending")
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$")
-KEYS = {
-    "host",
-    "port",
-    "user",
-    "auth",
-    "secret",
-    "key",
-    "hostkey",
-    "os",
-    "shell",
-    "mode",
-    "tags",
-    "allow",
-    "inject",
-    "status",
-    "safe",
-}
 
 
 class TargetFileError(ValueError):
@@ -56,6 +39,9 @@ class Target:
     inject: dict[str, str] = field(default_factory=dict)
     status: str = "active"
     safe: bool = True  # the built-in read-only commands run without asking (D39)
+
+
+KEYS = {f.name for f in fields(Target)} - {"name"}
 
 
 def load_targets(path: Path) -> dict[str, Target]:
@@ -164,20 +150,7 @@ def dump_targets(targets: dict[str, Target]) -> str:
     out = ["# Conning targets. Safe to read: this file holds no secrets, only references to them.\n"]
     for t in targets.values():
         out.append(f"[{t.name}]")
-        for key in (
-            "host",
-            "port",
-            "user",
-            "auth",
-            "secret",
-            "key",
-            "hostkey",
-            "os",
-            "shell",
-            "mode",
-            "status",
-            "safe",
-        ):
+        for key in "host port user auth secret key hostkey os shell mode status safe".split():
             value = getattr(t, key)
             if value is not None and (key in ("host", "user") or value != getattr(defaults, key)):
                 out.append(f"{key} = {_toml_value(value)}")

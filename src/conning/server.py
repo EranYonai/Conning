@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from conning import __version__, admin
 from conning.core import PENDING, Core
 from conning.output import DEFAULT_MAX_BYTES
-from conning.policy import remembered_rule, split_command
+from conning.policy import policy_argv, remembered_rule
 from conning.secrets import SecretError
 from conning.ssh import SSHError
 from conning.state import Approval
@@ -53,7 +53,7 @@ def approval_question(core: Core, target: str, cmd: str | None, argv: list[str] 
     if not needs:
         return None
     shown = cmd if cmd is not None else shlex.join(argv or [])
-    rule = remembered_rule(argv if argv is not None else split_command(cmd or ""))
+    rule = remembered_rule(policy_argv(cmd, argv))
     message = f"Conning: the agent wants to run this on {', '.join(needs)}:\n\n  {shown}\n"
     if cwd:
         message += f"  (in {cwd})\n"

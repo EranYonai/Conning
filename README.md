@@ -1,5 +1,7 @@
 # Conning
 
+<p align="center"><img src="docs/brand/handler-hero.svg" alt="Handler, the Conning mascot: a friendly cartoon glove working puppet strings on three lab VMs" width="360"></p>
+
 **A control room for your agent's test machines.** Your agent (Claude Code, Codex, Cursor...) stays on
 your own laptop. Conning holds the keys to your lab VMs and gives the agent four lean tools to run
 commands and move files there. The agent never sees a password, and you approve anything risky.

@@ -124,7 +124,7 @@ def connected(monkeypatch):
 
     def fake_connect(t):
         made.append(t.name)
-        return ssh.Connection(t, ["/usr/bin/ssh", "-F", "/cfg/lab.conf", "-T", ssh.ALIAS], {"E": "1"}, ["pw-1"])
+        return ssh.Connection(["/usr/bin/ssh", "-F", "/cfg/lab.conf", "-T", ssh.ALIAS], {"E": "1"}, ["pw-1"])
 
     monkeypatch.setattr(ssh, "connect", fake_connect)
     return made
@@ -171,7 +171,6 @@ def test_inject_env_and_secrets(connected, monkeypatch):
 
 def test_explain(monkeypatch):
     tr = transport.SSHTransport()
-    assert tr.is_ssh_failure(255, b"") and not tr.is_ssh_failure(1, b"")
     assert tr.explain(target(), 255, b"Permission denied").startswith("authentication failed")
     monkeypatch.setattr(ssh, "no_ssh_hint", lambda t: "hint")
     assert tr.explain(target(), 255, b"Connection refused") == "hint"

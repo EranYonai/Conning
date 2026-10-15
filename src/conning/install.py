@@ -1,11 +1,11 @@
 """`conn mcp install <client>`: add Conning to an agent client and deny the agent the ways around it.
 
 Each client gets the MCP server entry plus permission rules that refuse raw `ssh`, `scp` and `sftp`,
-the human-only `conn` commands, and reads of Conning's config dir (D44). Files are merged, never
-replaced: what is already there stays, a backup of each changed file is kept next to it, and a second
-run changes nothing. Rules in an agent's settings are a guardrail, not a sandbox: they match the
-command the agent writes (`/usr/bin/ssh` or `sh -c 'ssh ...'` slip past), so the real wall stays
-Conning's own toolset.
+the human-only `conn` commands, and reads of Conning's config dir (D44, D45); pi has no rules to write.
+Files are merged, never replaced: what is already there stays, a backup of each changed file is kept
+next to it, and a second run changes nothing. Rules in an agent's settings are a guardrail, not a
+sandbox: they match the command the agent writes (`/usr/bin/ssh` or `sh -c 'ssh ...'` slip past), so
+the real wall stays Conning's own toolset.
 """
 
 import json
@@ -17,7 +17,6 @@ from pathlib import Path
 
 from conning import paths
 
-CLIENTS = ("claude", "codex", "cursor")
 DENIED_PROGRAMS = ("ssh", "scp", "sftp")
 HUMAN_ONLY = ("approve", "lease", "allow")  # conn commands that grant trust
 
@@ -26,7 +25,6 @@ HUMAN_ONLY = ("approve", "lease", "allow")  # conn commands that grant trust
 class Plan:
     """What an install would change. `notes` are told to the human; nothing else is printed."""
 
-    client: str
     writes: dict[Path, str] = field(default_factory=dict)
     commands: list[list[str]] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
@@ -73,7 +71,7 @@ def _claude_dir() -> Path:
 
 
 def plan_claude(command: list[str]) -> Plan:
-    plan = Plan("claude")
+    plan = Plan()
     config = _home_relative(paths.config_dir(), "//")
     rules = [f"Bash({p} *)" for p in DENIED_PROGRAMS] + [f"Bash(conn {c} *)" for c in HUMAN_ONLY]
     rules += [f"Read({config}/**)", f"Edit({config}/**)"]
@@ -99,7 +97,7 @@ def _toml_string(text: str) -> str:
 
 
 def plan_codex(command: list[str]) -> Plan:
-    plan = Plan("codex")
+    plan = Plan()
     config = _codex_dir() / "config.toml"
     text = config.read_text(encoding="utf-8") if config.exists() else ""
     if "[mcp_servers.conning]" not in text:
@@ -123,14 +121,19 @@ def plan_codex(command: list[str]) -> Plan:
     return plan
 
 
+def _add_server(plan: Plan, path: Path, entry: dict) -> None:
+    """Add `conning` to the `mcpServers` object most clients share (Cursor, pi)."""
+    data = _load_json(path)
+    if "conning" not in data.setdefault("mcpServers", {}):
+        data["mcpServers"]["conning"] = entry
+        plan.writes[path] = _dump_json(data)
+
+
 def plan_cursor(command: list[str]) -> Plan:
-    plan = Plan("cursor")
-    mcp = Path.home() / ".cursor" / "mcp.json"
-    data = _load_json(mcp)
-    servers = data.setdefault("mcpServers", {})
-    if "conning" not in servers:
-        servers["conning"] = {"type": "stdio", "command": command[0], "args": command[1:]}
-        plan.writes[mcp] = _dump_json(data)
+    plan = Plan()
+    _add_server(
+        plan, Path.home() / ".cursor" / "mcp.json", {"type": "stdio", "command": command[0], "args": command[1:]}
+    )
     cli = Path.home() / ".cursor" / "cli-config.json"
     data = _load_json(cli)
     if not data:
@@ -143,7 +146,40 @@ def plan_cursor(command: list[str]) -> Plan:
     return plan
 
 
-PLANNERS = {"claude": plan_claude, "codex": plan_codex, "cursor": plan_cursor}
+def plan_opencode(command: list[str]) -> Plan:
+    """opencode: the server under `mcp`, and deny rules under `permission`, where the last match wins."""
+    plan = Plan()
+    path = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "opencode" / "opencode.json"
+    data = _load_json(path)
+    before = _dump_json(data)
+    data.setdefault("mcp", {}).setdefault("conning", {"type": "local", "command": command, "enabled": True})
+    permission = data.get("permission") or {}
+    data["permission"] = permission = permission if isinstance(permission, dict) else {"*": permission}
+    config = _home_relative(paths.config_dir(), "/")
+    rules = {
+        "bash": [f"{p} *" for p in DENIED_PROGRAMS] + [f"conn {c} *" for c in HUMAN_ONLY],
+        "read": [f"{config}/**"],
+        "edit": [f"{config}/**"],
+    }
+    for tool, patterns in rules.items():
+        current = permission.get(tool) or {}
+        permission[tool] = current = current if isinstance(current, dict) else {"*": current}
+        for pattern in patterns:
+            current.pop(pattern, None)  # re-added at the end, so it is the last match
+            current[pattern] = "deny"
+    if _dump_json(data) != before:
+        plan.writes[path] = _dump_json(data)
+    return plan
+
+
+def plan_pi(command: list[str]) -> Plan:
+    plan = Plan()
+    _add_server(plan, Path.home() / ".pi" / "agent" / "mcp.json", {"command": command[0], "args": command[1:]})
+    plan.notes.append("pi has no permission rules; it can still run ssh itself (a pi extension can block it)")
+    return plan
+
+
+PLANNERS = {"claude": plan_claude, "codex": plan_codex, "cursor": plan_cursor, "opencode": plan_opencode, "pi": plan_pi}
 
 
 def install(io, client: str, *, dry_run: bool = False) -> int:

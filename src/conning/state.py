@@ -101,20 +101,21 @@ def _leases_file() -> Path:
     return paths.config_dir() / "leases.json"  # a human grant, so it lives with the config
 
 
-def lease_until(target: str) -> float | None:
+def _leases() -> dict[str, float]:
     path = _leases_file()
-    leases = json.loads(path.read_text()) if path.exists() else {}
-    until = leases.get(target)
+    return json.loads(path.read_text()) if path.exists() else {}
+
+
+def lease_until(target: str) -> float | None:
+    until = _leases().get(target)
     return until if until and until > time.time() else None
 
 
 def grant_lease(target: str, minutes: int) -> float:
-    path = _leases_file()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    leases = json.loads(path.read_text()) if path.exists() else {}
-    until = time.time() + minutes * 60
-    leases[target] = until
-    _write(path, leases)
+    leases = _leases()
+    leases[target] = until = time.time() + minutes * 60
+    _leases_file().parent.mkdir(parents=True, exist_ok=True)
+    _write(_leases_file(), leases)
     return until
 
 

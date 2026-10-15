@@ -87,7 +87,7 @@ def test_run_passes_command_after_double_dash(monkeypatch):
         return SimpleNamespace(returncode=3, stdout=b"out")
 
     monkeypatch.setattr(ssh.subprocess, "run", fake_run)
-    conn = ssh.Connection(target(), ["ssh", "-F", "c", "-T", ssh.ALIAS], {"A": "1"}, [])
+    conn = ssh.Connection(["ssh", "-F", "c", "-T", ssh.ALIAS], {"A": "1"}, [])
     assert ssh.run(conn, "uname -a", stdin=b"in") == (3, b"out")
     assert seen["argv"][-2:] == ["--", "uname -a"] and seen["input"] == b"in" and seen["env"] == {"A": "1"}
     ssh.run(conn, "x")
@@ -99,7 +99,7 @@ def test_run_timeout_returns_124(monkeypatch):
         raise subprocess.TimeoutExpired(argv, 1, output=b"partial")
 
     monkeypatch.setattr(ssh.subprocess, "run", fake_run)
-    conn = ssh.Connection(target(), ["ssh"], {}, [])
+    conn = ssh.Connection(["ssh"], {}, [])
     rc, out = ssh.run(conn, "sleep 9", timeout=1)
     assert rc == 124 and out.startswith(b"partial") and b"timed out" in out
 

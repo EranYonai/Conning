@@ -2,6 +2,7 @@
 is identical. Policy is enforced here, in code, on every call.
 """
 
+import hashlib
 import re
 import shlex
 import time
@@ -11,7 +12,7 @@ from pathlib import Path
 
 from conning import audit, notify, paths, remote
 from conning.output import DEFAULT_MAX_BYTES, clamp_max_bytes, render, render_fanout
-from conning.policy import is_allowed, is_safe, split_command
+from conning.policy import is_allowed, is_safe, policy_argv
 from conning.secrets import SecretError, redact
 from conning.ssh import SSHError
 from conning.state import Approval, Job, lease_until, new_id, problems
@@ -66,13 +67,28 @@ class Core:
             return self.transport.exec(t, remote.pwsh_stdin(t.shell), stdin=script.encode(), timeout=timeout)
         return self.transport.exec(t, "sh -s", stdin=script.encode(), timeout=timeout)
 
-    def _decide(self, t: Target, policy_argv: list[str] | None) -> str:
+    def _one(self, name: str) -> tuple[Target | None, str | None]:
+        """One live target by name, or the error line for the agent."""
+        t = self.load().get(name)
+        if t is None:
+            return None, f"error: unknown target {name} (see targets)"
+        if t.status == "pending":
+            return None, f"error: {name} is pending; human runs: conn approve {name}"
+        return t, None
+
+    def _exec_short(self, t: Target, posix: str, pwsh: str) -> tuple[int, bytes]:
+        """Run a short read-only script: on stdin to `sh -s`, or as an encoded PowerShell command."""
+        if t.os == "windows":
+            return self.transport.exec(t, remote.pwsh_command(pwsh, t.shell))
+        return self.transport.exec(t, "sh -s", stdin=posix.encode())
+
+    def _decide(self, t: Target, words: list[str] | None) -> str:
         """run | approve | refused | blocked"""
         if t.status == "pending":
             return "blocked"
         if lease_until(t.name):
             return "run"
-        if is_allowed(policy_argv, t.allow) or (t.safe and is_safe(policy_argv)):
+        if is_allowed(words, t.allow) or (t.safe and is_safe(words)):
             return "run"
         return "refused" if t.mode == "observe" else "approve"
 
@@ -82,8 +98,7 @@ class Core:
             chosen, err = self._pick(target)
         except TargetFileError:
             return []
-        policy_argv = argv if argv is not None else split_command(cmd or "")
-        return [] if err else [t.name for t in chosen if self._decide(t, policy_argv) == "approve"]
+        return [] if err else [t.name for t in chosen if self._decide(t, policy_argv(cmd, argv)) == "approve"]
 
     # --- targets ------------------------------------------------------------------------------
 
@@ -135,15 +150,15 @@ class Core:
             return f"error: {e}"
         if err:
             return err
-        policy_argv = argv if argv is not None else split_command(cmd or "")
-        first = (policy_argv or [""])[0]
+        words = policy_argv(cmd, argv)
+        first = (words or [""])[0]
         if first in self.load():
             names = ",".join(dict.fromkeys([*(t.name for t in chosen), first]))
             return (
                 f"error: '{first}' is a target, not a command; to run on several targets, "
                 f"join them with commas: {names} <command>"
             )
-        decisions = {t.name: self._decide(t, policy_argv) for t in chosen}
+        decisions = {t.name: self._decide(t, words) for t in chosen}
         shown = cmd if cmd is not None else shlex.join(argv or [])
         for t in chosen:
             audit.record("run", target=t.name, command=shown, decision=decisions[t.name], cwd=cwd)
@@ -160,7 +175,7 @@ class Core:
             audit.record("approval", id=a.id, targets=needs, command=shown)
             if self.notify:
                 notify.approval_waiting(a.id, needs, shown)
-            reason = "shell syntax always asks" if policy_argv is None else "not on the allowlist"
+            reason = "shell syntax always asks" if words is None else "not on the allowlist"
             notes.append(
                 f"status=pending_approval id=a:{a.id} targets={','.join(needs)} ({reason}; "
                 f"{APPROVE_HINT.format(id=a.id)}); then read a:{a.id}"
@@ -183,7 +198,7 @@ class Core:
                 # WMI is off on this machine: run while connected, as M1 did, and say so.
                 job.detached = False
                 rc, out = self._script(t, remote.pwsh_script(command, cwd=cwd, env=env), timeout=timeout)
-                if rc == 255 and self.transport.is_ssh_failure(rc, out):
+                if rc == 255:
                     return None, f"error: {t.name}: {self.transport.explain(t, rc, out)}"
                 job.append(redact(out.decode(errors="replace"), self.transport.secrets(t)))
                 job.rc, job.finished = rc, self.clock()
@@ -325,9 +340,8 @@ class Core:
         if a.status == "denied":
             return f"status=denied id=a:{a.id} (the human declined: {a.display})"
         if not a.jobs:
-            targets = {t.name: t for t in self.load().values()}
-            chosen = [targets[n] for n in a.targets if n in targets]
-            for t in chosen:
+            targets = self.load()
+            for t in (targets[n] for n in a.targets if n in targets):
                 job, err = self._start(t, a.command, a.argv, a.cwd, a.timeout)
                 a.jobs[t.name] = job.id if job else err or "error"
             a.save()
@@ -341,18 +355,13 @@ class Core:
         return "\n".join(lines)
 
     def _read_file(self, name, path, range_, grep, max_bytes) -> str:
-        t = self.load().get(name)
-        if t is None:
-            return f"error: unknown target {name} (see targets)"
-        if t.status == "pending":
-            return f"error: {name} is pending; human runs: conn approve {name}"
+        t, err = self._one(name)
+        if err:
+            return err
         audit.record("read-file", target=name, path=path)
         try:
             hide = self.transport.secrets(t)
-            if t.os == "windows":
-                rc, out = self.transport.exec(t, remote.pwsh_command(remote.pwsh_read_file(path, range_), t.shell))
-            else:
-                rc, out = self.transport.exec(t, "sh -s", stdin=remote.posix_read_file(path, range_).encode())
+            rc, out = self._exec_short(t, remote.posix_read_file(path, range_), remote.pwsh_read_file(path, range_))
         except (SSHError, SecretError, ValueError) as e:
             return f"error: {e}"
         text = redact(out.decode(errors="replace"), hide)
@@ -379,11 +388,9 @@ class Core:
         name, remote_path, local_path = (
             (dst_kind, dst_path, Path(src_path).expanduser()) if upload else (src_kind, src_path, Path(dst_path))
         )
-        t = self.load().get(name)
-        if t is None:
-            return f"error: unknown target {name} (see targets)"
-        if t.status == "pending":
-            return f"error: {name} is pending; human runs: conn approve {name}"
+        t, err = self._one(name)
+        if err:
+            return err
         if upload and t.mode == "observe" and not lease_until(name):
             return f"refused  {name}  (mode=observe: uploads are not allowed)"
         if upload and not local_path.exists():
@@ -401,12 +408,8 @@ class Core:
             size = sum(p.stat().st_size for p in files)
             return f"ok directory, {len(files)} files, {_human(size)} (directories are not hashed)"
         local_sum = _sha256(local_path)
-        check = remote.pwsh_sha256(remote_path) if t.os == "windows" else remote.posix_sha256(remote_path)
         try:
-            if t.os == "windows":
-                rc, out = self.transport.exec(t, remote.pwsh_command(check, t.shell))
-            else:
-                rc, out = self.transport.exec(t, "sh -s", stdin=check.encode())
+            rc, out = self._exec_short(t, remote.posix_sha256(remote_path), remote.pwsh_sha256(remote_path))
         except (SSHError, SecretError) as e:
             return f"error: copied, but could not verify: {e}"
         remote_sum = out.decode(errors="replace").strip().lower()
@@ -418,8 +421,6 @@ class Core:
 def _grep(text: str, pattern: str | None) -> str:
     if not pattern:
         return text
-    import re
-
     try:
         rx = re.compile(pattern)
     except re.error:
@@ -442,8 +443,6 @@ def _slice(lines: list[str], range_: str | None) -> tuple[list[str], str]:
 
 
 def _sha256(path: Path) -> str:
-    import hashlib
-
     h = hashlib.sha256()
     with path.open("rb") as f:
         for block in iter(lambda: f.read(1 << 20), b""):

@@ -20,38 +20,8 @@ import shlex
 from pathlib import PureWindowsPath
 
 WRAPPERS = frozenset(
-    {
-        "sh",
-        "bash",
-        "zsh",
-        "dash",
-        "ksh",
-        "fish",
-        "busybox",
-        "python",
-        "python3",
-        "perl",
-        "ruby",
-        "node",
-        "php",
-        "pwsh",
-        "powershell",
-        "cmd",
-        "sudo",
-        "su",
-        "doas",
-        "env",
-        "xargs",
-        "nohup",
-        "timeout",
-        "nice",
-        "setsid",
-        "eval",
-        "exec",
-        "ssh",
-        "scp",
-        "rsync",
-    }
+    "sh bash zsh dash ksh fish busybox python python3 perl ruby node php pwsh powershell cmd "
+    "sudo su doas env xargs nohup timeout nice setsid eval exec ssh scp rsync".split()
 )
 SHELL_SYNTAX = (";", "|", "&", "`", "$(", ">", "<", "\n", "\r")
 
@@ -71,6 +41,11 @@ def split_command(cmd: str) -> list[str] | None:
     except ValueError:
         return None
     return argv or None
+
+
+def policy_argv(cmd: str | None, argv: list[str] | None) -> list[str] | None:
+    """The argv that policy checks: `argv` as given, or `cmd` split (None when it uses shell syntax)."""
+    return argv if argv is not None else split_command(cmd or "")
 
 
 def words(argv: list[str]) -> tuple[str, ...]:
@@ -115,24 +90,7 @@ def _without(*forbidden: str):
 
 
 IP_OBJECTS = {"a", "addr", "address", "l", "link", "r", "route", "n", "neigh", "neighbour", "neighbor"}
-IP_FLAGS = {
-    "-4",
-    "-6",
-    "-br",
-    "-brief",
-    "-c",
-    "-color",
-    "-s",
-    "-stats",
-    "-d",
-    "-details",
-    "-o",
-    "-oneline",
-    "-j",
-    "-json",
-    "-p",
-    "-pretty",
-}
+IP_FLAGS = set("-4 -6 -br -brief -c -color -s -stats -d -details -o -oneline -j -json -p -pretty".split())
 
 
 def _ip(rest: list[str]) -> bool:
@@ -144,30 +102,8 @@ def _ip(rest: list[str]) -> bool:
     return len(plain) == 1 or plain[1] in ("show", "list", "ls")
 
 
-SYSTEMCTL_READ = {
-    "status",
-    "show",
-    "cat",
-    "is-active",
-    "is-enabled",
-    "is-failed",
-    "list-units",
-    "list-unit-files",
-    "list-timers",
-}
-SYSTEMCTL_FLAGS = {
-    "--no-pager",
-    "-l",
-    "--full",
-    "-a",
-    "--all",
-    "--plain",
-    "--no-legend",
-    "--user",
-    "--value",
-    "-q",
-    "--quiet",
-}
+SYSTEMCTL_READ = set("status show cat is-active is-enabled is-failed list-units list-unit-files list-timers".split())
+SYSTEMCTL_FLAGS = set("--no-pager -l --full -a --all --plain --no-legend --user --value -q --quiet".split())
 SYSTEMCTL_VALUE_FLAGS = ("-t", "--type", "--state", "-n", "--lines", "-o", "--output", "-p", "--property")
 
 
@@ -181,57 +117,20 @@ def _systemctl(rest: list[str]) -> bool:
 
 SAFE: dict[str, object] = {
     # POSIX
-    "uname": _any,
+    **dict.fromkeys("uname uptime df free id whoami ps ls pwd nproc lscpu lsblk".split(), _any),
     "hostname": _only_flags(
-        "-f",
-        "--fqdn",
-        "--long",
-        "-s",
-        "--short",
-        "-d",
-        "--domain",
-        "-i",
-        "--ip-address",
-        "-I",
-        "--all-ip-addresses",
-        "-A",
-        "--all-fqdns",
-        "-a",
-        "--alias",
+        *"-f --fqdn --long -s --short -d --domain -i --ip-address "
+        "-I --all-ip-addresses -A --all-fqdns -a --alias".split()
     ),
-    "uptime": _any,
-    "df": _any,
-    "free": _any,
-    "id": _any,
-    "whoami": _any,
-    "ps": _any,
-    "ls": _any,
-    "pwd": _any,
-    "nproc": _any,
-    "lscpu": _any,
-    "lsblk": _any,
     "ip": _ip,
     "systemctl": _systemctl,
     "journalctl": _without(
-        "--vacuum-size",
-        "--vacuum-time",
-        "--vacuum-files",
-        "--rotate",
-        "--flush",
-        "--sync",
-        "--relinquish-var",
-        "--smart-relinquish-var",
-        "--setup-keys",
-        "--update-catalog",
+        *"--vacuum-size --vacuum-time --vacuum-files --rotate --flush --sync "
+        "--relinquish-var --smart-relinquish-var --setup-keys --update-catalog".split()
     ),
     # Windows (PowerShell); names are matched lower-case
     "ipconfig": _only_flags("/all"),
-    "get-computerinfo": _any,
-    "get-process": _any,
-    "get-service": _any,
-    "get-netipaddress": _any,
-    "get-volume": _any,
-    "get-hotfix": _any,
+    **dict.fromkeys("get-computerinfo get-process get-service get-netipaddress get-volume get-hotfix".split(), _any),
 }
 
 
@@ -242,7 +141,3 @@ def is_safe(argv: list[str] | None) -> bool:
         return False
     check = SAFE.get(program(argv[0]))
     return check is not None and check(argv[1:])
-
-
-def safe_names() -> str:
-    return ", ".join(SAFE)

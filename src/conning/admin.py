@@ -15,7 +15,7 @@ from typing import Protocol
 
 from conning import audit, paths, ssh
 from conning.core import PENDING, Core
-from conning.policy import SAFE, WRAPPERS, program, remembered_rule, split_command
+from conning.policy import SAFE, WRAPPERS, policy_argv, program, remembered_rule
 from conning.secrets import SecretError, store_in_keychain
 from conning.state import Approval, Job, grant_lease, set_problem
 from conning.targets import AUTHS, MODES, NAME_RE, Target, TargetFileError, load_targets, save_targets, select
@@ -53,6 +53,10 @@ def _save(t: Target) -> None:
     targets = load_targets(path)
     targets[t.name] = t
     save_targets(path, targets)
+
+
+def _confirm(io: IO, question: str) -> bool:
+    return io.ask(f"{question} [y/N] ").strip().lower() in ("y", "yes")
 
 
 def _need_tty(io: IO, what: str) -> int | None:
@@ -173,7 +177,7 @@ def _enroll(core: Core, io: IO, t: Target) -> int:
     io.say(f"{t.name}: {t.user}@{t.host}:{t.port}  auth={t.auth}" + (f"  secret={t.secret}" if t.secret else ""))
     for key_type, fp, _ in keys:
         io.say(f"  host key {key_type:<20} {fp}")
-    if io.ask("pin these host keys and make the target live? [y/N] ").strip().lower() not in ("y", "yes"):
+    if not _confirm(io, "pin these host keys and make the target live?"):
         return _stays_pending(io, t, "not pinned; the target stays pending", "host key not confirmed")
     ssh.pin_host_keys(t.name, keys)
     t = replace(t, hostkey=keys[0][1], status="active")
@@ -265,8 +269,7 @@ def approve_command(io: IO, approval_id: str, *, always: bool = False, inline: b
         return 0
     where = ", ".join(a.targets) + (f" (cwd {a.cwd})" if a.cwd else "")
     io.say(f"needs approval on {where}: {a.display}" if inline else f"a:{a.id} on {where}\n  {a.display}")
-    policy_argv = a.argv if a.argv is not None else split_command(a.command or "")
-    rule = remembered_rule(policy_argv)
+    rule = remembered_rule(policy_argv(a.command, a.argv))
     choices = "[a]llow once, [e] always allow '" + " ".join(rule) + "', [d]eny" if rule else "[a]llow once, [d]eny"
     answer = "e" if always and rule else io.ask(f"{choices}: ").strip().lower()[:1]
     choice = {"a": "once", "e": "always"}.get(answer) if answer in (("a", "e") if rule else ("a",)) else None
@@ -291,7 +294,7 @@ def decide(a: Approval, answer: str, *, by: str) -> str:
         a.save()
         audit.record("denied", id=a.id, by=by)
         return f"denied a:{a.id}"
-    rule = remembered_rule(a.argv if a.argv is not None else split_command(a.command or ""))
+    rule = remembered_rule(policy_argv(a.command, a.argv))
     lines = []
     if answer == "always" and rule:
         _add_rule(a.targets, rule)
@@ -349,10 +352,7 @@ def allow(io: IO, selector: str, words: list[str]) -> int:
         return 1
     names = [t.name for t in chosen]
     shown = " ".join(rule)
-    if io.ask(f"let the agent run '{shown} ...' on {', '.join(names)} without asking? [y/N] ").strip().lower() not in (
-        "y",
-        "yes",
-    ):
+    if not _confirm(io, f"let the agent run '{shown} ...' on {', '.join(names)} without asking?"):
         io.say("no change")
         return 1
     changed = _add_rule(names, rule)
@@ -428,10 +428,7 @@ def lease(io: IO, name: str, minutes: int) -> int:
     if not 1 <= minutes <= MAX_LEASE_MINUTES:
         io.say(f"error: a lease lasts 1 to {MAX_LEASE_MINUTES} minutes")
         return 1
-    if io.ask(f"give the agent a full shell on {name} for {minutes} minutes? [y/N] ").strip().lower() not in (
-        "y",
-        "yes",
-    ):
+    if not _confirm(io, f"give the agent a full shell on {name} for {minutes} minutes?"):
         io.say("no lease granted")
         return 1
     grant_lease(name, minutes)

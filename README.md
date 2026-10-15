@@ -7,8 +7,8 @@ commands and move files there. The agent never sees a password, and you approve 
 > **Status: pre-alpha (M2 done).** Running commands, long jobs, remote file reads and transfers
 > work over OpenSSH, with pinned host keys, password or key auth, approvals and leases. You can approve
 > in the agent client, in `conn watch` or with `conn approve`; `conn doctor` checks your setup. Long
-> jobs run detached on Linux, macOS and Windows targets, and `conn mcp install` sets up claude, codex
-> or cursor. See
+> jobs run detached on Linux, macOS and Windows targets, and `conn mcp install` sets up claude, codex,
+> cursor, opencode or pi. See
 > [docs/design.md](docs/design.md) for every decision so far.
 
 ## Why
@@ -31,7 +31,7 @@ reach the machines it tests on:
 
 ```sh
 uv tool install conning        # or: pipx install conning
-conn mcp install claude        # or codex, cursor: adds the server and denies the agent raw ssh/scp
+conn mcp install claude        # or codex, cursor, opencode, pi: adds the server and denies raw ssh/scp
 ```
 
 The MCP server needs no install at all:
@@ -154,7 +154,8 @@ takes it back. Every command, answer and rule change lands in a hash-chained aud
 - Secrets travel over stdin or the SSH channel's env, never argv. Output is redacted before it is saved.
 - Remote output is marked untrusted. Shell wrappers (`sh -c`, `python -c`, `sudo`...) and shell syntax
   (`;`, `|`, `$(...)`) always ask.
-- `conn mcp install` also denies the agent raw `ssh`/`scp`, so it can't go around Conning.
+- `conn mcp install` also denies the agent raw `ssh`/`scp`, so it can't go around Conning (pi has no
+  permission rules, so there it only adds the server).
 - The audit log is hash-chained. It runs as your user, so it is tamper-evident, not tamper-proof.
 
 ## Development

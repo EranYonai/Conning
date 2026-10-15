@@ -21,8 +21,6 @@ class Transport(Protocol):
 
     def secrets(self, t: Target) -> list[str]: ...
 
-    def is_ssh_failure(self, rc: int, output: bytes) -> bool: ...
-
     def explain(self, t: Target, rc: int, output: bytes) -> str: ...
 
 
@@ -65,9 +63,6 @@ class SSHTransport:
         if t.auth == "password":
             values += self._conn(t).secrets
         return values
-
-    def is_ssh_failure(self, rc: int, output: bytes) -> bool:
-        return rc == 255
 
     def explain(self, t: Target, rc: int, output: bytes) -> str:
         if rc == 255:

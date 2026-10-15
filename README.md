@@ -196,7 +196,7 @@ After changing the CLI, refresh the README block with `uv run conn help --markdo
 ## Docs
 
 - [docs/design.md](docs/design.md): the design and every decision, with its status.
-- [docs/build-log.html](docs/build-log.html): how the design came together, as a blog post.
+- [docs/blog.html](docs/blog.html): the development blog, from the first idea to today.
 
 ## License
 

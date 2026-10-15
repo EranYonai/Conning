@@ -70,9 +70,8 @@ def test_admin_commands_reach_admin(fake, monkeypatch):
 
 
 def test_planned_and_help(capsys):
-    assert cli.main(["watch"]) == 2
     assert cli.main(["mcp", "install", "claude"]) == 2
-    assert "planned for M2" in capsys.readouterr().err
+    assert "not implemented yet" in capsys.readouterr().err
     assert cli.main([]) == 0
     assert cli.main(["help"]) == 0
     assert "usage: conn" in capsys.readouterr().out
@@ -95,9 +94,11 @@ def test_mcp_serve(monkeypatch):
         def run(self, transport):
             ran.append(transport)
 
-    monkeypatch.setattr(server, "build_server", lambda: Server())
+    flags = []
+    monkeypatch.setattr(server, "build_server", lambda approve_in_client: flags.append(approve_in_client) or Server())
     assert cli.main(["mcp"]) == 0 and cli.main(["mcp", "serve"]) == 0
-    assert ran == ["stdio", "stdio"]
+    assert cli.main(["mcp", "--approve-in-client"]) == 0
+    assert ran == ["stdio", "stdio", "stdio"] and flags == [False, False, True]
 
 
 def test_real_core_and_io_factories(home):

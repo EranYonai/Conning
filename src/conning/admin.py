@@ -13,12 +13,12 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Protocol
 
-from conning import paths, ssh
+from conning import audit, paths, ssh
 from conning.core import Core
-from conning.policy import remembered_rule, split_command
+from conning.policy import WRAPPERS, program, remembered_rule, split_command
 from conning.secrets import SecretError, store_in_keychain
 from conning.state import Approval, Job, grant_lease, set_problem
-from conning.targets import AUTHS, MODES, NAME_RE, Target, TargetFileError, load_targets, save_targets
+from conning.targets import AUTHS, MODES, NAME_RE, Target, TargetFileError, load_targets, save_targets, select
 
 MAX_LEASE_MINUTES = 60
 APPROVE_WAIT = 10  # seconds `conn approve a:<id>` waits for the command before handing back its job id
@@ -132,6 +132,7 @@ def add(
     )
     if not io.tty:
         _save(t)
+        audit.record("target", target=name, change="proposed")
         io.say(f"{name} saved as pending. It does nothing until a human runs: conn approve {name}")
         return 0
     if auth == "password" and not secret:
@@ -171,6 +172,7 @@ def _enroll(core: Core, io: IO, t: Target) -> int:
     t = replace(t, os=os_name, shell=shell)
     _save(t)
     set_problem(t.name, None)
+    audit.record("target", target=t.name, change="live")
     io.say(f"{t.name} is live: {os_name} {shell} mode={t.mode}")
     return 0
 
@@ -234,22 +236,113 @@ def approve_command(io: IO, approval_id: str, *, always: bool = False) -> int:
     rule = remembered_rule(policy_argv)
     choices = "[a]llow once, [e] always allow '" + " ".join(rule) + "', [d]eny" if rule else "[a]llow once, [d]eny"
     answer = "e" if always and rule else io.ask(f"{choices}: ").strip().lower()[:1]
-    if answer not in (("a", "e") if rule else ("a",)):
+    choice = {"a": "once", "e": "always"}.get(answer) if answer in (("a", "e") if rule else ("a",)) else None
+    io.say(decide(a, choice or "deny", by="terminal"))
+    return 0
+
+
+def decide(a: Approval, answer: str, *, by: str) -> str:
+    """Record the human's answer to a pending command: once, always or deny. Returns one line.
+
+    Shared by `conn approve`, `conn watch` and the prompt in the agent client, so all three
+    remember the same rule and leave the same audit entry.
+    """
+    if a.status != "pending":
+        return f"a:{a.id} is already {a.status}"
+    if answer == "deny":
         a.status = "denied"
         a.save()
-        io.say(f"denied a:{a.id}")
-        return 0
-    if answer == "e":
-        path = paths.targets_file()
-        targets = load_targets(path)
-        for name in a.targets:
-            if name in targets and rule not in targets[name].allow:
-                targets[name] = replace(targets[name], allow=(*targets[name].allow, rule))
-        save_targets(path, targets)
-        io.say(f"always allowing '{' '.join(rule)}' on {', '.join(a.targets)}")
+        audit.record("denied", id=a.id, by=by)
+        return f"denied a:{a.id}"
+    rule = remembered_rule(a.argv if a.argv is not None else split_command(a.command or ""))
+    lines = []
+    if answer == "always" and rule:
+        _add_rule(a.targets, rule)
+        lines.append(f"always allowing '{' '.join(rule)}' on {', '.join(a.targets)}")
     a.status = "approved"
     a.save()
-    io.say(f"approved a:{a.id}; the agent sees the result with read a:{a.id}")
+    audit.record("approved", id=a.id, by=by, always=bool(answer == "always" and rule) or None)
+    lines.append(f"approved a:{a.id}; the agent sees the result with read a:{a.id}")
+    return "\n".join(lines)
+
+
+def _add_rule(names: list[str], rule: tuple[str, ...]) -> list[str]:
+    """Add an allow rule to these targets; returns the names that did not have it yet."""
+    path = paths.targets_file()
+    targets = load_targets(path)
+    changed = []
+    for name in names:
+        if name in targets and rule not in targets[name].allow:
+            targets[name] = replace(targets[name], allow=(*targets[name].allow, rule))
+            changed.append(name)
+            audit.record("rule", target=name, change="allow", rule=" ".join(rule))
+    save_targets(path, targets)
+    return changed
+
+
+def rule_words(words: list[str]) -> tuple[str, ...] | str:
+    """Validate a rule typed by a human: a program and up to a few plain words. Returns the rule or an error."""
+    if not words:
+        return "error: give the command words to allow, e.g. conn allow lab systemctl status"
+    if any(w.startswith("-") for w in words):
+        return "error: rules match words, not flags (flags are ignored when matching)"
+    if program(words[0]) in WRAPPERS:
+        return f"error: '{words[0]}' can run anything, so it always asks"
+    return (program(words[0]), *words[1:])
+
+
+def allow(io: IO, selector: str, words: list[str]) -> int:
+    """Human only: list a target's rules, or add one so the command runs without asking."""
+    targets = load_targets(paths.targets_file())
+    chosen = select(targets, selector)
+    if not chosen:
+        io.say(f"error: no target matches {selector!r}")
+        return 1
+    if not words:
+        for t in chosen:
+            rules = ", ".join("'" + " ".join(r) + "'" for r in t.allow) or "(none)"
+            io.say(f"{t.name}: {rules}")
+        return 0
+    if (code := _need_tty(io, "changing the allowlist")) is not None:
+        return code
+    rule = rule_words(words)
+    if isinstance(rule, str):
+        io.say(rule)
+        return 1
+    names = [t.name for t in chosen]
+    shown = " ".join(rule)
+    if io.ask(f"let the agent run '{shown} ...' on {', '.join(names)} without asking? [y/N] ").strip().lower() not in (
+        "y",
+        "yes",
+    ):
+        io.say("no change")
+        return 1
+    changed = _add_rule(names, rule)
+    io.say(f"allowing '{shown}' on {', '.join(changed)}" if changed else f"'{shown}' was already allowed")
+    return 0
+
+
+def deny(io: IO, selector: str, words: list[str]) -> int:
+    """Remove an allow rule. Taking trust away needs no terminal."""
+    rule = rule_words(words)
+    if isinstance(rule, str):
+        io.say(rule)
+        return 1
+    path = paths.targets_file()
+    targets = load_targets(path)
+    chosen = select(targets, selector)
+    if not chosen:
+        io.say(f"error: no target matches {selector!r}")
+        return 1
+    changed = []
+    for t in chosen:
+        if rule in t.allow:
+            targets[t.name] = replace(t, allow=tuple(r for r in t.allow if r != rule))
+            changed.append(t.name)
+            audit.record("rule", target=t.name, change="deny", rule=" ".join(rule))
+    save_targets(path, targets)
+    shown = " ".join(rule)
+    io.say(f"'{shown}' now asks again on {', '.join(changed)}" if changed else f"no target had the rule '{shown}'")
     return 0
 
 
@@ -262,6 +355,7 @@ def remove(io: IO, name: str) -> int:
     del targets[name]
     save_targets(path, targets)
     ssh.pin_host_keys(name, [])
+    audit.record("target", target=name, change="removed")
     io.say(f"removed {name}")
     return 0
 
@@ -298,6 +392,7 @@ def lease(io: IO, name: str, minutes: int) -> int:
         io.say("no lease granted")
         return 1
     grant_lease(name, minutes)
+    audit.record("lease", target=name, minutes=minutes)
     io.say(f"lease on {name} for {minutes} minutes")
     return 0
 

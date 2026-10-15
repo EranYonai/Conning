@@ -136,3 +136,13 @@ def set_problem(target: str, reason: str | None) -> None:
     else:
         current[target] = reason
     _write(_problems_file(), current)
+
+
+def pending_approvals() -> list[Approval]:
+    """Commands still waiting for the human, oldest first."""
+    found = [Approval.load(p.stem) for p in _dir("approvals").glob("*.json")]
+    return sorted((a for a in found if a is not None and a.status == "pending"), key=lambda a: a.created)
+
+
+def output_logs() -> list[Path]:
+    return sorted(_dir("out").glob("*.log"))

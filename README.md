@@ -4,9 +4,10 @@
 your own laptop. Conning holds the keys to your lab VMs and gives the agent four lean tools to run
 commands and move files there. The agent never sees a password, and you approve anything risky.
 
-> **Status: pre-alpha (M1).** Running commands, long jobs, remote file reads and transfers work over
-> OpenSSH, with pinned host keys, password or key auth, approvals and leases. Windows targets run
-> synchronously for now. `conn watch`, `doctor` and `mcp install` come in M2. See
+> **Status: pre-alpha (M2 in progress).** Running commands, long jobs, remote file reads and transfers
+> work over OpenSSH, with pinned host keys, password or key auth, approvals and leases. You can approve
+> in the agent client, in `conn watch` or with `conn approve`; `conn doctor` checks your setup. Windows
+> targets run synchronously for now, and `mcp install` is still to come. See
 > [docs/design.md](docs/design.md) for every decision so far.
 
 ## Why
@@ -35,7 +36,7 @@ conn mcp install claude        # planned: writes the MCP entry for claude, codex
 The MCP server needs no install at all:
 
 ```sh
-claude mcp add conning -- uvx conning mcp
+claude mcp add conning -- uvx conning mcp --approve-in-client
 ```
 
 ## The agent's four tools
@@ -93,13 +94,19 @@ conn test name
 conn lease [--minutes MINUTES] name
     Human only: give a target a full shell for a time box (1-60 minutes).
 
-conn watch
-    Live control room: every command on every target, and approval prompts.
+conn allow target [words ...]
+    Human only: let a command run without asking (no words: list the rules).
+
+conn deny target words [words ...]
+    Remove an allow rule, so the command asks again.
+
+conn watch [--history HISTORY] [--no-prompt]
+    Live control room: every command on every target, job output, approval prompts.
 
 conn doctor
-    Check setup: agent permission rules, weak passwords, unpinned host keys.
+    Check this machine's setup: config and state dirs, ssh, keychain, targets.
 
-conn mcp <serve|install> ...
+conn mcp [--approve-in-client] <serve|install> ...
     Run the MCP server on stdio, or install it into an agent client.
 
 conn help [--markdown]
@@ -111,9 +118,19 @@ A target you add with `conn add` from an agent session is saved as **pending**. 
 the human runs `conn approve <name>`, which shows the host, the pinned host-key fingerprint and where
 the secret comes from.
 
-A command outside a target's allowlist returns `status=pending_approval id=a:<id>`. The human answers
-with `conn approve a:<id>` (allow once, always allow its first two words, or deny), and the agent picks
-up the result with `read a:<id>`.
+A command outside a target's allowlist returns `status=pending_approval id=a:<id>`, and a desktop
+notification tells the human. They answer in one of three places (allow once, always allow its first
+two words, or deny), and the agent picks up the result with `read a:<id>`:
+
+- **In the agent client**, if the server runs as `conn mcp --approve-in-client`: the client shows the
+  question before the command is queued, and an approved command runs in the same call. Use it with
+  clients that show such prompts to you, not to the model.
+- **In `conn watch`**, which also shows every command and its output as it happens.
+- **With `conn approve a:<id>`** in any terminal.
+
+`conn allow <target> systemctl status` lets a command run without asking from then on; `conn deny`
+takes it back. Every command, answer and rule change lands in a hash-chained audit log, and
+`conn doctor` checks your setup when something doesn't work.
 
 ## Safety model
 

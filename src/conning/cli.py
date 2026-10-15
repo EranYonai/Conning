@@ -13,7 +13,7 @@ from conning.secrets import SecretError
 from conning.ssh import SSHError
 from conning.targets import AUTHS, MODES, TargetFileError
 
-PLANNED = "not implemented yet (planned for M2); see docs/design.md"
+PLANNED = "not implemented yet; see the milestones in docs/design.md"
 
 
 def _core():
@@ -115,11 +115,38 @@ def _import(args: argparse.Namespace) -> int:
     return admin.import_ssh_config(_io(), args.match)
 
 
+def _allow(args: argparse.Namespace) -> int:
+    from conning import admin
+
+    return admin.allow(_io(), args.target, args.words)
+
+
+def _deny(args: argparse.Namespace) -> int:
+    from conning import admin
+
+    return admin.deny(_io(), args.target, args.words)
+
+
+def _watch(args: argparse.Namespace) -> int:
+    from conning.watch import watch
+
+    try:
+        return watch(_core(), _io(), history=args.history, prompt=not args.no_prompt)
+    except KeyboardInterrupt:
+        return 0
+
+
+def _doctor(args: argparse.Namespace) -> int:
+    from conning.doctor import doctor
+
+    return doctor(_io())
+
+
 def _mcp(args: argparse.Namespace) -> int:
     if args.mcp_command in (None, "serve"):
         from conning.server import build_server
 
-        build_server().run("stdio")
+        build_server(approve_in_client=args.approve_in_client).run("stdio")
         return 0
     return _planned(argparse.Namespace(command=f"mcp {args.mcp_command}"))
 
@@ -195,10 +222,24 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("name")
     sp.add_argument("--minutes", type=int, default=15)
 
-    # Human side, M2.
-    cmd("watch", "Live control room: every command on every target, and approval prompts.")
-    cmd("doctor", "Check setup: agent permission rules, weak passwords, unpinned host keys.")
+    sp = cmd("allow", "Human only: let a command run without asking (no words: list the rules).", _allow)
+    sp.add_argument("target", help="a name, a comma list, or tag:<tag>")
+    sp.add_argument("words", nargs="*", help="the command's leading words, e.g. systemctl status")
+    sp = cmd("deny", "Remove an allow rule, so the command asks again.", _deny)
+    sp.add_argument("target", help="a name, a comma list, or tag:<tag>")
+    sp.add_argument("words", nargs="+")
+
+    # The human's live view.
+    sp = cmd("watch", "Live control room: every command on every target, job output, approval prompts.", _watch)
+    sp.add_argument("--history", type=int, default=10, help="show this many past events first")
+    sp.add_argument("--no-prompt", action="store_true", help="show activity only; never ask")
+    cmd("doctor", "Check this machine's setup: config and state dirs, ssh, keychain, targets.", _doctor)
     sp = cmd("mcp", "Run the MCP server on stdio, or install it into an agent client.", _mcp)
+    sp.add_argument(
+        "--approve-in-client",
+        action="store_true",
+        help="ask the human in the agent client (MCP elicitation) when a command needs approval",
+    )
     mcp_sub = sp.add_subparsers(dest="mcp_command", metavar="<serve|install>")
     mcp_sub.add_parser("serve", help="run the MCP server on stdio (the default)")
     mcp_sub.add_parser("install", help="add Conning to claude, codex or cursor").add_argument(

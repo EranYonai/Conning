@@ -53,7 +53,28 @@ call only when it returns, so the agent gets progress by polling `read`.
 - OpenSSH runs with a generated config: pinned host keys (mismatch is a hard fail), all forwarding off.
   Conning never connects to an address the agent typed.
 - `conn mcp install` writes agent permission rules denying raw `ssh`/`scp` and reads of Conning's config.
-- Audit log: append-only, hash-chained, tamper-evident (not tamper-proof: it runs as your user).
+- Audit log (`<state>/audit.jsonl`): one JSON line per command, decision, approval, rule, lease and
+  target change, each carrying the sha256 of the line before it. `conn doctor` reports a broken chain.
+  Tamper-evident, not tamper-proof: it runs as your user.
+
+## Approvals (M2)
+
+A command that waits for the human can be answered three ways, all through one function so they
+remember the same rule and leave the same audit entry:
+
+1. **In the agent client** (opt-in, `conn mcp --approve-in-client`). The `run` tool asks through MCP
+   elicitation *before* the command is queued: once, always, or deny. On protocol 2026-07-28 the
+   question rides an `input_required` result and the client retries the call with the answer; older
+   clients get a mid-call `elicitation/create`. The question depends only on the call's arguments, so a
+   retry sees the same one. Opt-in because the protocol lets a client answer an elicitation by itself;
+   turn it on for clients that show it to a person.
+2. **`conn watch`**, a terminal that prints every event as it happens, new job output, and prompts for
+   each pending command.
+3. **`conn approve a:<id>`**, as in M1. A desktop notification (macOS, Linux; `CONNING_NOTIFY=0` turns
+   it off) says a command is waiting.
+
+`conn allow <target> <words>` adds a rule after asking at a terminal; `conn deny` removes one and needs
+no terminal, since taking trust away is always safe. `conn allow <target>` lists the rules.
 
 ## Decisions
 
@@ -92,6 +113,11 @@ call only when it returns, so the agent gets progress by polling `read`.
 | D30 | The `max_bytes` ceiling is 16 KB | Eran: 8 to 16 KB; one call never floods the context, paging covers the rest | locked |
 | D31 | No listing in the official MCP Registry yet | Eran: maybe in the future | locked |
 | D32 | The tool-schema size stays a test cap, not a published token budget | Eran: no need to publish it | locked |
+| D33 | Approving in the agent client is opt-in (`conn mcp --approve-in-client`), asked before the command is queued, through the SDK's resolver so both protocol versions work | The protocol allows a client to answer an elicitation itself; only clients that show it to a person should approve | proposed |
+| D34 | One audit log in the state dir, JSON lines, each with the sha256 of the line before; `conn watch` and `conn doctor` read it | One source for the live view and for after-the-fact review; edits show up | locked |
+| D35 | `conn allow` needs a terminal and a yes; `conn deny` does not | Granting trust is human-only (like approve and lease); revoking it is always safe | locked |
+| D36 | `conn watch` reads only local files (audit log, job logs) and never contacts a target | Runs beside any number of agents without racing their reads | locked |
+| D37 | `conn doctor` checks config and state dirs, ssh tools, keychain, secret sources, pinned keys, leases and the audit chain | The first real user lost time to a read-only sandbox and an unreachable keychain | locked |
 
 ## Ideas adopted from prior art
 
@@ -116,8 +142,9 @@ call only when it returns, so the agent gets progress by polling `read`.
 - **M1 (done):** OpenSSH connector (generated config, pinning, askpass), `run`/`read`/`transfer`, job
   table, `add`/`approve`/`import`/`test`/`rm`/`lease`, keychain, `op://` and `env:` resolution,
   redaction, approvals by `conn approve a:<id>`.
-- **M2:** approvals in the agent client (MCP elicitation, `conn watch`, OS notification), audit log,
-  `doctor`, `mcp install` with permission rules, detached jobs on Windows.
+- **M2 (in progress):** approvals in the agent client (MCP elicitation), `conn watch`, desktop
+  notifications, hash-chained audit log, `allow`/`deny`, `doctor`. Next in M2: `mcp install` with
+  permission rules, detached jobs on Windows.
 - **Later:** WinRM connector, short-lived SSH certificates, per-target prepare recipes, MCP Registry listing.
 
 ## Open questions

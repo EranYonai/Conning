@@ -165,6 +165,26 @@ Expect: the four tools, then the same text the CLI printed.
 
 To try it from a real agent: `claude mcp add conning-dev -e CONNING_HOME=$CONNING_HOME -e CONNING_STATE=$CONNING_STATE -- uv run --directory $PWD -q conn mcp`.
 
+## 11. M2: watch, allow, doctor, approvals in the client
+
+```sh
+conn doctor                  # expect: ok lines; warn lines name anything to fix
+conn watch                   # leave this running in a second terminal (same CONNING_HOME/STATE exports)
+conn run lab whoami          # back in the first: pending; watch prints ASK and prompts you there
+conn allow lab df            # type y
+conn allow lab               # expect: lab: 'uname', 'df' (and anything you "always" allowed)
+conn run lab df -h /         # expect: exit=0 right away; watch shows run, start, exit and the output
+conn deny lab df             # expect: 'df' now asks again on lab
+```
+
+Approvals in the client, with a real agent: `claude mcp add conning-dev -e CONNING_HOME=$CONNING_HOME
+-e CONNING_STATE=$CONNING_STATE -- uv run --directory $PWD -q conn mcp --approve-in-client`, then ask it
+to run `hostname` on lab. Expect a prompt in the client with once / always / deny, and the result in
+the same reply after you pick. On macOS and Linux a desktop notification appears too.
+
+Expect `grep -c . $CONNING_STATE/audit.jsonl` to count every step above, and `conn doctor` to warn if
+you edit a line of that file.
+
 ## Clean up
 
 ```sh

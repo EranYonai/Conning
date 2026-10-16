@@ -2,13 +2,15 @@
 
 Conning never reads your ~/.ssh/config at run time. For every call it generates a per-target config
 that pins the host key (StrictHostKeyChecking yes, a known_hosts file of its own) and turns every
-kind of forwarding off. Passwords are handed to ssh through an askpass helper and an environment
+kind of forwarding off. A target behind jump hosts gets one such block per hop, linked by ProxyJump,
+so every hop's key is pinned too. Passwords are handed to ssh through an askpass helper and an environment
 variable of the ssh process, never on a command line.
 """
 
 import base64
 import getpass
 import hashlib
+import json
 import os
 import shutil
 import socket
@@ -20,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from conning import paths, secrets
-from conning.targets import Target
+from conning.targets import Target, TargetFileError, jump_chain, load_targets
 
 ALIAS = "conning-target"
 IS_WINDOWS_HOST = os.name == "nt"
@@ -67,9 +69,13 @@ def control_dir() -> Path | None:
     return d if len(str(d)) + CONTROL_SUFFIX <= SOCKET_PATH_MAX else None
 
 
-def config_text(t: Target, known_hosts: Path, control_dir: Path | None) -> str:
+def hop_alias(name: str) -> str:
+    return f"conning-hop-{name}"
+
+
+def _block(alias: str, t: Target, known_hosts: Path, proxy: str | None) -> list[str]:
     lines = [
-        f"Host {ALIAS}",
+        f"Host {alias}",
         f"  HostName {t.host}",
         f"  Port {t.port}",
         f"  User {t.user}",
@@ -87,6 +93,8 @@ def config_text(t: Target, known_hosts: Path, control_dir: Path | None) -> str:
         "  ServerAliveCountMax 3",
         "  LogLevel ERROR",
     ]
+    if proxy is not None:  # ssh runs the jump with this same -F file, so each hop is pinned and locked down
+        lines.append(f"  ProxyJump {proxy}")
     if t.auth == "password":
         lines += [
             "  PreferredAuthentications password,keyboard-interactive",
@@ -97,11 +105,55 @@ def config_text(t: Target, known_hosts: Path, control_dir: Path | None) -> str:
         lines += ["  PreferredAuthentications publickey", "  BatchMode yes"]
         if t.auth == "key" and t.key:
             lines += [f'  IdentityFile "{Path(t.key).expanduser()}"', "  IdentitiesOnly yes"]
+    return lines
+
+
+def _hop_blocks(hops: list[Target], known_hosts: Path) -> tuple[list[str], str | None]:
+    """One Host block per jump host, each jumping through the one before. Returns (lines, last alias)."""
+    lines: list[str] = []
+    proxy = None
+    for hop in hops:
+        lines += _block(hop_alias(hop.name), hop, known_hosts, proxy)
+        proxy = hop_alias(hop.name)
+    return lines, proxy
+
+
+def config_text(t: Target, known_hosts: Path, control_dir: Path | None, hops: list[Target] | None = None) -> str:
+    lines, proxy = _hop_blocks(hops or [], known_hosts)
+    lines += _block(ALIAS, t, known_hosts, proxy)
     if control_dir is not None:
         # One shared connection per target and setup, not per host and user (ssh's %C): a target
-        # with another name, key, password or known_hosts must log in itself, not ride another's.
+        # with another name, key, password, known_hosts or route must log in itself, not ride another's.
         socket_name = hashlib.sha1("\n".join(lines).encode()).hexdigest()  # 40 chars, like %C
         lines += ["  ControlMaster auto", f'  ControlPath "{control_dir}/{socket_name}"', "  ControlPersist 600"]
+    return "\n".join(lines) + "\n"
+
+
+def scan_config_text(t: Target, known_hosts: Path, scanned: Path, hops: list[Target]) -> str:
+    """Like config_text, but the target's key is unknown: ssh records whatever key it offers in `scanned`
+    and then offers no credential at all, so nothing is sent to a host before a human confirms its key."""
+    lines, proxy = _hop_blocks(hops, known_hosts)
+    lines += [
+        f"Host {ALIAS}",
+        f"  HostName {t.host}",
+        f"  Port {t.port}",
+        f"  User {t.user}",
+        f"  HostKeyAlias {host_key_alias(t.name)}",
+        f'  UserKnownHostsFile "{scanned}"',
+        "  GlobalKnownHostsFile " + ("NUL" if IS_WINDOWS_HOST else "/dev/null"),
+        "  StrictHostKeyChecking accept-new",
+        "  UpdateHostKeys no",
+        "  ClearAllForwardings yes",
+        "  PermitLocalCommand no",
+        "  ConnectTimeout 10",
+        "  LogLevel ERROR",
+        f"  ProxyJump {proxy}",
+        "  PreferredAuthentications publickey",
+        "  IdentityFile none",
+        "  IdentitiesOnly yes",
+        "  IdentityAgent none",
+        "  BatchMode yes",
+    ]
     return "\n".join(lines) + "\n"
 
 
@@ -112,28 +164,49 @@ class Connection:
     secrets: list[str]  # resolved values used by this connection, for redaction
 
 
-def connect(t: Target) -> Connection:
-    """Prepare (not open) a connection: write the generated config and resolve the password if any."""
-    ssh = require_ssh()
-    known_hosts = paths.config_dir() / "known_hosts"  # read only here; written when a human pins keys
-    generated = paths.state_dir() / "ssh"
-    generated.mkdir(parents=True, exist_ok=True)
-    control = control_dir()
-    conf = generated / f"{t.name}.conf"
-    conf.write_text(config_text(t, known_hosts, control), encoding="utf-8")
-    env = dict(os.environ)
-    used: list[str] = []
-    if t.auth == "password":
-        if not t.secret:
-            raise SSHError(f"{t.name}: password auth without a secret reference")
-        password = secrets.resolve(t.secret)
-        used.append(password)
+def hops(t: Target) -> list[Target]:
+    """The live jump hosts on the way to `t`, from the target file. A pending one is an error."""
+    if t.jump is None:
+        return []
+    try:
+        chain = jump_chain(load_targets(paths.targets_file()), t)
+    except TargetFileError as e:
+        raise SSHError(str(e)) from e
+    for hop in chain:
+        if hop.status != "active":
+            raise SSHError(f"{t.name}: jump host {hop.name} is pending; a human runs: conn approve {hop.name}")
+    return chain
+
+
+def _password_env(env: dict[str, str], logins: list[Target]) -> list[str]:
+    """Hand ssh the password of every login on the way that uses one, by host key alias (askpass)."""
+    passwords = {}
+    for t in logins:
+        if t.auth == "password":
+            if not t.secret:
+                raise SSHError(f"{t.name}: password auth without a secret reference")
+            passwords[host_key_alias(t.name)] = secrets.resolve(t.secret)
+    if passwords:
         env.update(
             SSH_ASKPASS=str(_askpass_helper()),
             SSH_ASKPASS_REQUIRE="force",
             DISPLAY=env.get("DISPLAY", ":0"),
-            CONNING_ASKPASS_VALUE=password,
+            CONNING_ASKPASS_VALUES=json.dumps(passwords),
         )
+    return list(passwords.values())
+
+
+def connect(t: Target) -> Connection:
+    """Prepare (not open) a connection: write the generated config and resolve the passwords if any."""
+    ssh = require_ssh()
+    chain = hops(t)
+    known_hosts = paths.config_dir() / "known_hosts"  # read only here; written when a human pins keys
+    generated = paths.state_dir() / "ssh"
+    generated.mkdir(parents=True, exist_ok=True)
+    conf = generated / f"{t.name}.conf"
+    conf.write_text(config_text(t, known_hosts, control_dir(), chain), encoding="utf-8")
+    env = dict(os.environ)
+    used = _password_env(env, [*chain, t])
     return Connection(argv=[ssh, "-F", str(conf), "-T", ALIAS], env=env, secrets=used)
 
 
@@ -142,10 +215,10 @@ def _askpass_helper() -> Path:
     d = runtime_dir()
     if IS_WINDOWS_HOST:
         helper = d / "askpass.cmd"
-        helper.write_text(f'@"{sys.executable}" -m conning.askpass\r\n', encoding="utf-8")
+        helper.write_text(f'@"{sys.executable}" -m conning.askpass %*\r\n', encoding="utf-8")
     else:
         helper = d / "askpass.sh"
-        helper.write_text(f'#!/bin/sh\nexec "{sys.executable}" -m conning.askpass\n', encoding="utf-8")
+        helper.write_text(f'#!/bin/sh\nexec "{sys.executable}" -m conning.askpass "$@"\n', encoding="utf-8")
         helper.chmod(0o700)
     return helper
 
@@ -196,6 +269,36 @@ def scan_host_keys(host: str, port: int) -> list[tuple[str, str, str]]:
     return keys
 
 
+def scan_host_keys_via(t: Target, chain: list[Target]) -> list[tuple[str, str, str]]:
+    """Like scan_host_keys, for a target behind jump hosts: ssh-keyscan can't jump, so ssh itself
+    connects through the pinned hops, records the key the target offers, and logs in with nothing."""
+    ssh = require_ssh()
+    known_hosts = paths.config_dir() / "known_hosts"
+    with tempfile.TemporaryDirectory(dir=runtime_dir()) as tmp:
+        scanned = Path(tmp) / "known_hosts"
+        conf = Path(tmp) / "scan.conf"
+        conf.write_text(scan_config_text(t, known_hosts, scanned, chain), encoding="utf-8")
+        env = dict(os.environ)
+        _password_env(env, chain)
+        try:
+            done = subprocess.run(
+                [ssh, "-F", str(conf), "-T", ALIAS, "--", "exit"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                env=env,
+                timeout=60,
+            )
+        except subprocess.TimeoutExpired as e:
+            raise SSHError(f"{t.name}: no answer through {t.jump}") from e
+        alias = host_key_alias(t.name)
+        lines = scanned.read_text().splitlines() if scanned.exists() else []
+    keys = [(p[1], fingerprint(p[2]), p[2]) for p in (line.split() for line in lines) if len(p) >= 3 and p[0] == alias]
+    if not keys:
+        raise SSHError(f"{t.name}: no host key through {t.jump}: {explain_ssh_failure(done.stdout)}")
+    return keys
+
+
 def fingerprint(key_b64: str) -> str:
     digest = hashlib.sha256(base64.b64decode(key_b64)).digest()
     return "SHA256:" + base64.b64encode(digest).decode().rstrip("=")
@@ -241,6 +344,8 @@ Windows older than 10 1809 / Server 2019: install Win32-OpenSSH from its GitHub 
 
 
 def no_ssh_hint(t: Target) -> str:
+    if t.jump:  # only the jump host can see the target, so there is nothing to probe from here
+        return f"{t.name}: nothing listens on {t.host}:{t.port} as seen from {t.jump}. Is the host and port right?"
     windows_ports = [p for p in (3389, 5985, 5986) if port_open(t.host, p, timeout=2)]
     if windows_ports:
         return WINDOWS_SSH_FIX.format(name=t.name, host=t.host, port=t.port, ports=", ".join(map(str, windows_ports)))

@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 import sys
@@ -94,25 +95,22 @@ def test_redact_all_forms():
 
 
 def test_askpass_prints_value(monkeypatch):
-    env = {**os.environ, "CONNING_ASKPASS_VALUE": "pw"}
-    done = subprocess.run([sys.executable, "-m", "conning.askpass"], env=env, capture_output=True, text=True)
+    env = {**os.environ, "CONNING_ASKPASS_VALUES": json.dumps({"conning-lab": "pw"})}
+    askpass = [sys.executable, "-m", "conning.askpass", "tester@conning-lab's password: "]
+    done = subprocess.run(askpass, env=env, capture_output=True, text=True)
     assert done.returncode == 0 and done.stdout == "pw\n"
-    env.pop("CONNING_ASKPASS_VALUE")
-    assert subprocess.run([sys.executable, "-m", "conning.askpass"], env=env).returncode == 1
+    env.pop("CONNING_ASKPASS_VALUES")
+    assert subprocess.run(askpass, env=env).returncode == 1
 
 
 def test_askpass_in_process(monkeypatch, capsys):
-    import importlib
+    from conning import askpass
 
-    monkeypatch.setenv("CONNING_ASKPASS_VALUE", "inproc")
-    sys.modules.pop("conning.askpass", None)
-    importlib.import_module("conning.askpass")
-    assert capsys.readouterr().out == "inproc\n"
-    monkeypatch.delenv("CONNING_ASKPASS_VALUE")
-    sys.modules.pop("conning.askpass", None)
-    with pytest.raises(SystemExit):
-        importlib.import_module("conning.askpass")
-    sys.modules.pop("conning.askpass", None)
+    monkeypatch.setattr(sys, "argv", ["askpass"])
+    monkeypatch.setenv("CONNING_ASKPASS_VALUES", json.dumps({"conning-lab": "inproc"}))
+    assert askpass.main() == 0 and capsys.readouterr().out == "inproc\n"
+    monkeypatch.delenv("CONNING_ASKPASS_VALUES")
+    assert askpass.main() == 1 and capsys.readouterr().out == ""
 
 
 # --- SSHTransport ------------------------------------------------------------------------------
@@ -176,3 +174,5 @@ def test_explain(monkeypatch):
     assert tr.explain(target(), 255, b"Connection refused") == "hint"
     assert tr.explain(target(), 2, b"a\nlast\n") == "exit=2: last"
     assert tr.explain(target(), 2, b"") == "exit=2: no output"
+    assert tr.explain(target(), 255, b"") == "ssh failed"
+    assert "possibly at jump host gw" in tr.explain(target(jump="gw"), 255, b"")

@@ -277,6 +277,82 @@ def test_import_from_ssh_config(tmp_path):
     assert "conning-e2e" in c("run", "imp1", "whoami")
 
 
+# jump hosts (D49): the sshd is its own bastion, reached again as "localhost" through itself
+
+
+def close_shared_connection(c: Conn, name: str) -> None:
+    conf = c.home / "state" / "ssh" / f"{name}.conf"
+    subprocess.run(["ssh", "-F", str(conf), "-O", "exit", "conning-target"], capture_output=True)
+
+
+def test_a_target_behind_a_jump_host(tmp_path):
+    c = Conn(tmp_path)
+    add_live(c, "gw", "--auth", "key", "--key", KEY)
+    inner = ("--host", "localhost", "--port", PORT, "--user", USER, "--auth", "key", "--key", KEY)
+    assert "saved as pending" in c("add", "inner", *inner, "--jump", "gw")
+    out = c.human("approve", "inner", answers="y\n")
+    assert f"{USER}@localhost:{PORT}  via gw" in out and "inner is live: linux bash" in out, out
+    assert "conning-e2e" in c("run", "inner", "whoami")
+    assert re.search(r"inner .*reach=ok", c("targets", "--check"))
+    blob = tmp_path / "blob.txt"
+    blob.write_text("through the bastion")
+    assert "sha256 verified" in c("transfer", f"local:{blob}", f"inner:{REMOTE}-jumped.txt")
+    assert "inner jump through gw" in c("rm", "gw")
+
+    known_hosts = tmp_path / "known_hosts"  # the bastion's pinned key no longer matches: no way in
+    pinned = known_hosts.read_text()
+    other = subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(tmp_path / "other")])
+    assert other.returncode == 0
+    fake = (tmp_path / "other.pub").read_text().split()[1]
+    known_hosts.write_text(re.sub(r"^(conning-gw ssh-ed25519) \S+", rf"\1 {fake}", pinned, flags=re.M))
+    close_shared_connection(c, "inner")
+    close_shared_connection(c, "gw")
+    assert "possibly at jump host gw (check it with: conn test gw)" in c("run", "inner", "whoami")
+    assert "host key does not match" in c("test", "gw")
+    known_hosts.write_text(pinned)
+    assert "conning-e2e" in c("run", "inner", "whoami")
+
+
+@pytest.mark.parametrize("gw_pw, inner_pw", [("right", "right"), ("right", "wrong"), ("wrong", "right")])
+def test_each_hop_gets_its_own_password(tmp_path, gw_pw, inner_pw):
+    c = Conn(tmp_path)
+    password = os.environ["CONNING_E2E_PASSWORD"]
+    c.env.update(GW_PW=password, IN_PW=password if inner_pw == "right" else "wrong-2")
+    c("add", "gw", *SSHD, "--auth", "password", "--secret", "env:GW_PW")
+    assert "gw is live" in c.human("approve", "gw", answers="y\n")
+    c.env["GW_PW"] = password if gw_pw == "right" else "wrong-1"  # changed after gw went live
+    inner = ("--host", "localhost", "--port", PORT, "--user", USER, "--jump", "gw")
+    c("add", "inner", *inner, "--auth", "password", "--secret", "env:IN_PW")
+    out = c.human("approve", "inner", answers="y\n")
+    if gw_pw == "wrong":
+        assert "no host key through gw: authentication failed" in out, out
+    elif inner_pw == "wrong":
+        assert "authentication failed" in out and "no host key" not in out and "inner is live" not in out, out
+    else:
+        assert "inner is live" in out, out
+        assert "conning-e2e" in c("run", "inner", "whoami")
+    for leaked in (password, "wrong-1", "wrong-2"):
+        found_in = subprocess.run(["grep", "-r", leaked, str(tmp_path / "state")], capture_output=True)
+        assert found_in.returncode == 1, found_in.stdout
+
+
+def test_import_keeps_proxyjump(tmp_path):
+    c = Conn(tmp_path)
+    ssh_dir = tmp_path / "home" / ".ssh"
+    ssh_dir.mkdir()
+    (ssh_dir / "config").write_text(
+        f"Host bastion\n  HostName 127.0.0.1\n  Port {PORT}\n  User {USER}\n  IdentityFile {KEY}\n\n"
+        f"Host behind\n  HostName localhost\n  Port {PORT}\n  User {USER}\n  IdentityFile {KEY}\n"
+        "  ProxyJump bastion\n"
+    )
+    assert "imported 2 target(s) as pending: bastion, behind" in c("import")
+    assert 'jump = "bastion"' in (tmp_path / "targets.toml").read_text()
+    assert "jump host bastion is pending" in c.human("approve", "behind", answers="y\n")
+    assert "bastion is live" in c.human("approve", "bastion", answers="y\n")
+    assert "behind is live" in c.human("approve", "behind", answers="y\n")
+    assert "conning-e2e" in c("run", "behind", "whoami")
+
+
 # conn run / approve / allow / deny / lease
 
 

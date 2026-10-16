@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import json
 import subprocess
 from types import SimpleNamespace
 
@@ -61,13 +62,13 @@ def test_connect_writes_config(home, fake_ssh):
     assert conn.argv[:2] == ["/usr/bin/ssh", "-F"] and conn.argv[-2:] == ["-T", ssh.ALIAS]
     assert (ssh.paths.state_dir() / "ssh" / "lab.conf").read_text().startswith("Host conning-target")
     assert not (home / "known_hosts").exists()  # running never writes the config dir
-    assert conn.secrets == [] and "CONNING_ASKPASS_VALUE" not in conn.env
+    assert conn.secrets == [] and "CONNING_ASKPASS_VALUES" not in conn.env
 
 
 def test_connect_with_password_uses_askpass(home, fake_ssh, monkeypatch):
     monkeypatch.setenv("LAB_PW", "s3cret-pw")
     conn = ssh.connect(target(auth="password", secret="env:LAB_PW"))
-    assert conn.env["CONNING_ASKPASS_VALUE"] == "s3cret-pw"
+    assert json.loads(conn.env["CONNING_ASKPASS_VALUES"]) == {"conning-lab": "s3cret-pw"}
     assert conn.env["SSH_ASKPASS_REQUIRE"] == "force"
     helper = conn.env["SSH_ASKPASS"]
     assert "conning.askpass" in open(helper).read()

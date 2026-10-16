@@ -163,8 +163,8 @@ no terminal, since taking trust away is always safe. `conn allow <target>` lists
 - **M2 (done):** approvals in the agent client (MCP elicitation) and at the terminal,
   `conn watch`, desktop notifications, hash-chained audit log, `allow`/`deny`, `doctor`, the built-in
   read-only list, `mcp install` with permission rules, detached jobs on Windows.
-- **M3 (in progress):** the container image on GHCR (D46), `conn rename` (D47), end-to-end tests in CI (D48).
-- **Later:** WinRM connector, short-lived SSH certificates, per-target prepare recipes, MCP Registry listing.
+- **M3 (in progress):** the container image on GHCR (D46), `conn rename` (D47), end-to-end tests in CI (D48), jump hosts (D49).
+- **Next:** a listing in the MCP Registry, for wide use.
 
 ## Open questions
 

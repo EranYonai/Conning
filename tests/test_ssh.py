@@ -45,6 +45,17 @@ def test_config_for_key_and_password_auth(tmp_path):
     assert "PubkeyAuthentication no" in pw and "BatchMode" not in pw
 
 
+def test_each_target_gets_its_own_shared_connection(tmp_path):
+    def socket(t, known_hosts="kh"):
+        text = ssh.config_text(t, tmp_path / known_hosts, tmp_path / "ctl")
+        return text.split("ControlPath ")[1].splitlines()[0]
+
+    assert socket(target()) == socket(target())
+    assert len(socket(target()).strip('"').rsplit("/", 1)[1]) == 40
+    others = {socket(target(name="lab2")), socket(target(auth="key", key="~/k")), socket(target(), "kh2")}
+    assert socket(target()) not in others and len(others) == 3
+
+
 def test_connect_writes_config(home, fake_ssh):
     conn = ssh.connect(target())
     assert conn.argv[:2] == ["/usr/bin/ssh", "-F"] and conn.argv[-2:] == ["-T", ssh.ALIAS]

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Each target gets its own shared ssh connection. Before, two targets for the same host, port and user
+  shared one, so the second skipped its own key, password and pinned host key for up to ten minutes.
+- End-to-end tests: CI starts a real sshd on the runner and drives the real `conn` and MCP server
+  against it (`uv run pytest -m e2e`, after `tests/e2e/start-sshd.sh`).
 - `conn rename <old> <new>`: a target's host keys, stored password, rules, lease, pending approvals and
   running jobs follow it to the new name. Human only (needs a terminal); `conn mcp install` denies it to agents.
 - The Docker image is built with `uv sync --frozen` from `uv.lock`, like every other install in the repo.

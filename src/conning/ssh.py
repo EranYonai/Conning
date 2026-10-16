@@ -43,7 +43,7 @@ def host_key_alias(name: str) -> str:
 
 SHORT_TMP = Path("/tmp")  # macOS's per-user temp dir (/var/folders/...) is too long for socket paths
 SOCKET_PATH_MAX = 104  # sun_path on macOS and BSD (108 on Linux)
-CONTROL_SUFFIX = 58  # ssh appends "/" + %C (40 hex chars) + a 17-char temporary suffix
+CONTROL_SUFFIX = 58  # "/" + the socket name (40 hex chars) + the 17-char temporary suffix ssh adds
 
 
 def runtime_dir() -> Path:
@@ -98,7 +98,10 @@ def config_text(t: Target, known_hosts: Path, control_dir: Path | None) -> str:
         if t.auth == "key" and t.key:
             lines += [f'  IdentityFile "{Path(t.key).expanduser()}"', "  IdentitiesOnly yes"]
     if control_dir is not None:
-        lines += ["  ControlMaster auto", f'  ControlPath "{control_dir}/%C"', "  ControlPersist 600"]
+        # One shared connection per target and setup, not per host and user (ssh's %C): a target
+        # with another name, key, password or known_hosts must log in itself, not ride another's.
+        socket_name = hashlib.sha1("\n".join(lines).encode()).hexdigest()  # 40 chars, like %C
+        lines += ["  ControlMaster auto", f'  ControlPath "{control_dir}/{socket_name}"', "  ControlPersist 600"]
     return "\n".join(lines) + "\n"
 
 

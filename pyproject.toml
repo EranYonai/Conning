@@ -53,3 +53,5 @@ select = ["E", "F", "W", "I", "B", "UP"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-m 'not e2e'"  # the e2e tests need a real sshd: uv run pytest -m e2e (see tests/e2e/start-sshd.sh)
+markers = ["e2e: end to end against a real OpenSSH server (CI's e2e job)"]

@@ -194,6 +194,14 @@ uv run pytest --cov=conning      # CI requires 95% coverage on Linux
 uv run ruff check && uv run ruff format --check
 ```
 
+The end-to-end tests drive the real `conn` and MCP server against a throwaway local sshd (Linux, root
+to start it; CI's `e2e` job does this on every push):
+
+```sh
+eval "$(sudo sh tests/e2e/start-sshd.sh /tmp/conning-sshd | sed 's/^/export /')"
+uv run --with keyrings.alt pytest -m e2e   # keyrings.alt: a file keychain for typed passwords
+```
+
 After changing the CLI, refresh the README block with `uv run conn help --markdown`.
 
 ## Docs

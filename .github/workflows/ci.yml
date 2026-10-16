@@ -31,6 +31,22 @@ jobs:
         if: matrix.os != 'ubuntu-latest'
         run: uv run pytest -q
 
+  e2e:
+    # The real `conn` and MCP server against a real OpenSSH server on the runner, no mocks.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - run: uv sync
+      - name: Start a throwaway sshd on 127.0.0.1 as the target
+        run: sudo sh tests/e2e/start-sshd.sh "$RUNNER_TEMP/sshd" >> "$GITHUB_ENV"
+      - run: uv run --with keyrings.alt pytest -m e2e -v  # a file keychain, for passwords typed at `conn add`
+      - name: sshd log
+        if: failure()
+        run: sudo cat "$RUNNER_TEMP/sshd/sshd.log"
+
   image:
     runs-on: ubuntu-latest
     steps:

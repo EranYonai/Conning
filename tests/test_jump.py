@@ -71,7 +71,7 @@ def test_each_hop_gets_a_pinned_locked_down_block(tmp_path):
         assert f"HostKeyAlias conning-{name}" in block and "StrictHostKeyChecking yes" in block
         assert "ForwardAgent no" in block and "ClearAllForwardings yes" in block
     assert "ControlMaster" not in outer + inner and "ControlMaster auto" in final
-    assert 'IdentityFile "/k"' in inner
+    assert "IdentityFile" in inner and "IdentitiesOnly yes" in inner
 
 
 def test_a_route_change_gets_its_own_shared_connection(tmp_path):

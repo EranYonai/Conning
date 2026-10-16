@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 (2026-10-16)
 
 - Each target gets its own shared ssh connection. Before, two targets for the same host, port and user
   shared one, so the second skipped its own key, password and pinned host key for up to ten minutes.

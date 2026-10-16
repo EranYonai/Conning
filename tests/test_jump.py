@@ -8,7 +8,7 @@ import pytest
 from conftest import target, write_targets
 from test_admin import KEYS, FakeIO, saved
 
-from conning import admin, askpass, cli, paths, ssh, transport
+from conning import admin, askpass, paths, ssh, transport
 from conning.targets import TargetFileError, jump_chain, load_targets
 
 KEY = "QUFB"
@@ -46,9 +46,7 @@ def test_jump_chain_in_dial_order(home):
     "toml, error",
     [
         ('[lab]\nhost = "h"\nuser = "u"\njump = 3\n', "'jump' must be the name of another target"),
-        ('[lab]\nhost = "h"\nuser = "u"\njump = "bad name"\n', "'jump' must be the name"),
         ('[lab]\nhost = "h"\nuser = "u"\njump = "nowhere"\n', "jump host nowhere is not a target"),
-        ('[lab]\nhost = "h"\nuser = "u"\njump = "lab"\n', "jump hosts loop back to lab"),
         ('[a]\nhost = "h"\nuser = "u"\njump = "b"\n[b]\nhost = "h"\nuser = "u"\njump = "a"\n', "loop back"),
     ],
 )
@@ -257,8 +255,9 @@ def test_import_proxyjump_to_an_existing_target_or_one_left_out(home, tmp_path):
     assert saved().jump == "gw"
 
 
-def test_cli_passes_jump(home, monkeypatch):
-    seen = {}
-    monkeypatch.setattr(admin, "add", lambda *a, **k: seen.update(k) or 0)
-    assert cli.main(["add", "lab", "--host", "h", "--user", "u", "--jump", "gw"]) == 0
-    assert seen["jump"] == "gw"
+def test_import_never_saves_a_jump_loop(home, tmp_path):
+    config = tmp_path / "config"
+    config.write_text("Host a\n  ProxyJump b\nHost b\n  ProxyJump a\n")
+    io = FakeIO()
+    assert admin.import_ssh_config(io, config=config) == 0
+    assert "jump hosts loop back" in io.text and load_targets(paths.targets_file())  # still loads

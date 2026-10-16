@@ -54,21 +54,23 @@ def load_targets(path: Path) -> dict[str, Target]:
         raise TargetFileError(f"{path}: {e}") from e
     targets = {name: _parse(name, table, path) for name, table in data.items()}
     for t in targets.values():
-        jump_chain(targets, t, where=f"{path} [{t.name}]")
+        try:
+            jump_chain(targets, t)
+        except TargetFileError as e:
+            raise TargetFileError(f"{path}: {e}") from e
     return targets
 
 
-def jump_chain(targets: dict[str, Target], t: Target, where: str | None = None) -> list[Target]:
+def jump_chain(targets: dict[str, Target], t: Target) -> list[Target]:
     """The jump hosts on the way to `t`, in the order ssh dials them. Unknown names and loops are errors."""
-    where = where or t.name
     chain: list[Target] = []
     seen = {t.name}
     name = t.jump
     while name is not None:
         if name in seen:
-            raise TargetFileError(f"{where}: jump hosts loop back to {name}")
+            raise TargetFileError(f"{t.name}: jump hosts loop back to {name}")
         if name not in targets:
-            raise TargetFileError(f"{where}: jump host {name} is not a target")
+            raise TargetFileError(f"{t.name}: jump host {name} is not a target")
         seen.add(name)
         chain.insert(0, targets[name])
         name = targets[name].jump

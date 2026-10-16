@@ -19,7 +19,17 @@ from conning.core import PENDING, Core
 from conning.policy import SAFE, WRAPPERS, policy_argv, program, remembered_rule
 from conning.secrets import SecretError, store_in_keychain
 from conning.state import Approval, Job, grant_lease, rename_target, set_problem
-from conning.targets import AUTHS, MODES, NAME_RE, Target, TargetFileError, load_targets, save_targets, select
+from conning.targets import (
+    AUTHS,
+    MODES,
+    NAME_RE,
+    Target,
+    TargetFileError,
+    jump_chain,
+    load_targets,
+    save_targets,
+    select,
+)
 
 MAX_LEASE_MINUTES = 60
 APPROVE_WAIT = 10  # seconds `conn approve a:<id>` waits for the command before handing back its job id
@@ -522,11 +532,9 @@ def import_ssh_config(io: IO, match: str = "*", config: Path | None = None) -> i
             if option in opts and opts[option].lower() not in ("no", "none"):
                 io.say(f"  ! {alias}: {option} in your ssh config; Conning drops it")
         jump = opts.get("proxyjump")
-        if jump is not None and jump.lower() == "none":
-            jump = None
-        if jump is not None and (jump not in names or jump == alias):  # user@host:port, a list, or not imported
+        if jump and jump.lower() != "none" and (jump not in names or jump == alias):  # user@host, a list...
             io.say(f'  ! {alias}: ProxyJump {jump} is not a target here; add it, then set jump = "<name>"')
-            jump = None
+        jump = jump if jump in names and jump != alias else None
         key = opts.get("identityfile")
         targets[alias] = Target(
             name=alias,
@@ -539,6 +547,12 @@ def import_ssh_config(io: IO, match: str = "*", config: Path | None = None) -> i
             status="pending",
         )
         added.append(alias)
+    for alias in added:  # two imported hosts jumping through each other would break the target file
+        try:
+            jump_chain(targets, targets[alias])
+        except TargetFileError as e:
+            io.say(f"  ! {e}; {alias} is imported without it")
+            targets[alias] = replace(targets[alias], jump=None)
     save_targets(path, targets)
     io.say(f"imported {len(added)} target(s) as pending: {', '.join(added) or '-'}")
     if added:

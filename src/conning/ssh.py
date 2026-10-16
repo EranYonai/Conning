@@ -18,7 +18,7 @@ import stat
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from conning import paths, secrets
@@ -69,10 +69,6 @@ def control_dir() -> Path | None:
     return d if len(str(d)) + CONTROL_SUFFIX <= SOCKET_PATH_MAX else None
 
 
-def hop_alias(name: str) -> str:
-    return f"conning-hop-{name}"
-
-
 def _block(alias: str, t: Target, known_hosts: Path, proxy: str | None) -> list[str]:
     lines = [
         f"Host {alias}",
@@ -113,8 +109,8 @@ def _hop_blocks(hops: list[Target], known_hosts: Path) -> tuple[list[str], str |
     lines: list[str] = []
     proxy = None
     for hop in hops:
-        lines += _block(hop_alias(hop.name), hop, known_hosts, proxy)
-        proxy = hop_alias(hop.name)
+        lines += _block(f"conning-hop-{hop.name}", hop, known_hosts, proxy)
+        proxy = f"conning-hop-{hop.name}"
     return lines, proxy
 
 
@@ -133,27 +129,9 @@ def scan_config_text(t: Target, known_hosts: Path, scanned: Path, hops: list[Tar
     """Like config_text, but the target's key is unknown: ssh records whatever key it offers in `scanned`
     and then offers no credential at all, so nothing is sent to a host before a human confirms its key."""
     lines, proxy = _hop_blocks(hops, known_hosts)
-    lines += [
-        f"Host {ALIAS}",
-        f"  HostName {t.host}",
-        f"  Port {t.port}",
-        f"  User {t.user}",
-        f"  HostKeyAlias {host_key_alias(t.name)}",
-        f'  UserKnownHostsFile "{scanned}"',
-        "  GlobalKnownHostsFile " + ("NUL" if IS_WINDOWS_HOST else "/dev/null"),
-        "  StrictHostKeyChecking accept-new",
-        "  UpdateHostKeys no",
-        "  ClearAllForwardings yes",
-        "  PermitLocalCommand no",
-        "  ConnectTimeout 10",
-        "  LogLevel ERROR",
-        f"  ProxyJump {proxy}",
-        "  PreferredAuthentications publickey",
-        "  IdentityFile none",
-        "  IdentitiesOnly yes",
-        "  IdentityAgent none",
-        "  BatchMode yes",
-    ]
+    target = _block(ALIAS, replace(t, auth="ssh-agent"), scanned, proxy)
+    target[target.index("  StrictHostKeyChecking yes")] = "  StrictHostKeyChecking accept-new"
+    lines += [*target, "  IdentityFile none", "  IdentitiesOnly yes", "  IdentityAgent none"]
     return "\n".join(lines) + "\n"
 
 

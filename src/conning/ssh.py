@@ -209,6 +209,18 @@ def pin_host_keys(name: str, keys: list[tuple[str, str, str]]) -> None:
     known_hosts.write_text("\n".join(kept) + "\n")
 
 
+def rename_host_keys(old: str, new: str) -> None:
+    """Pin the keys pinned for `old` under `new` instead (`conn rename`)."""
+    known_hosts = paths.config_dir() / "known_hosts"
+    if not known_hosts.exists():
+        return
+    alias, renamed = host_key_alias(old), host_key_alias(new)
+    lines = known_hosts.read_text().splitlines()
+    known_hosts.write_text(
+        "\n".join(renamed + line[len(alias) :] if line.split(" ", 1)[0] == alias else line for line in lines) + "\n"
+    )
+
+
 def port_open(host: str, port: int, timeout: float = 3) -> bool:
     try:
         with socket.create_connection((host, port), timeout=timeout):

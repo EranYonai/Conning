@@ -140,6 +140,27 @@ def set_problem(target: str, reason: str | None) -> None:
     _write(_problems_file(), current)
 
 
+def rename_target(old: str, new: str) -> None:
+    """Carry what the state and config dirs know by name over to the new name: a lease, a pending
+    target's problem, commands still waiting for approval, and jobs still running. Finished jobs and
+    answered approvals are history and keep the name they ran under."""
+    if old in (leases := _leases()):
+        leases[new] = leases.pop(old)
+        _write(_leases_file(), leases)
+    if old in (notes := problems()):
+        notes[new] = notes.pop(old)
+        _write(_problems_file(), notes)
+    for a in pending_approvals():
+        if old in a.targets:
+            a.targets = [new if name == old else name for name in a.targets]
+            a.save()
+    for path in _dir("jobs").glob("*.json"):
+        job = Job.load(path.stem)
+        if job and job.target == old and job.rc is None:
+            job.target = new
+            job.save()
+
+
 def pending_approvals() -> list[Approval]:
     """Commands still waiting for the human, oldest first."""
     found = [Approval.load(p.stem) for p in _dir("approvals").glob("*.json")]

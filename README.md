@@ -114,6 +114,9 @@ conn import [--match MATCH]
 conn rm name
     Remove a target and its pinned host key.
 
+conn rename old new
+    Human only: rename a target; its host keys, password, lease and pending work follow.
+
 conn test name
     Probe a target: reachability, OS, shell, pinned host key.
 

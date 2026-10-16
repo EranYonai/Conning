@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `conn rename <old> <new>`: a target's host keys, stored password, rules, lease, pending approvals and
+  running jobs follow it to the new name. Human only (needs a terminal); `conn mcp install` denies it to agents.
 - The Docker image is built with `uv sync --frozen` from `uv.lock`, like every other install in the repo.
 - `docs/field-test.md` and a **Field report** issue form, for real-use testing across clients, install methods and targets.
 

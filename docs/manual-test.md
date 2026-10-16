@@ -176,6 +176,9 @@ conn allow lab make          # type y
 conn allow lab               # expect: lab: the built-in read-only list; rules: 'make' (and any "always")
 conn run lab df -h /         # expect: exit=0 right away (built-in list); watch shows run, start, exit, output
 conn deny lab make           # expect: 'make' now asks again on lab
+conn rename lab lab2          # expect: renamed lab to lab2; conn ls shows lab2 with its rules
+conn run lab2 uname -s       # expect: exit=0 with no host key prompt (the pin moved)
+conn rename lab2 lab         # back, for the steps below
 ```
 
 Approvals in the client, with a real agent: `claude mcp add conning-dev -e CONNING_HOME=$CONNING_HOME

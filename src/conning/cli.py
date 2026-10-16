@@ -75,6 +75,7 @@ HANDLERS = {
     "approve": lambda a: admin.approve(_core(), _io(), a.what, always=a.always),
     "import": lambda a: admin.import_ssh_config(_io(), a.match),
     "rm": lambda a: admin.remove(_io(), a.name),
+    "rename": lambda a: admin.rename(_io(), a.old, a.new),
     "test": lambda a: admin.test(_core(), _io(), a.name),
     "lease": lambda a: admin.lease(_io(), a.name, a.minutes),
     "allow": lambda a: admin.allow(_io(), a.target, a.words),
@@ -148,6 +149,9 @@ def build_parser() -> argparse.ArgumentParser:
     sp = cmd("import", "Import hosts from ~/.ssh/config as pending targets (unsafe options dropped).")
     sp.add_argument("--match", default="*")
     cmd("rm", "Remove a target and its pinned host key.").add_argument("name")
+    sp = cmd("rename", "Human only: rename a target; its host keys, password, lease and pending work follow.")
+    sp.add_argument("old")
+    sp.add_argument("new")
     cmd("test", "Probe a target: reachability, OS, shell, pinned host key.").add_argument("name")
     sp = cmd("lease", "Human only: give a target a full shell for a time box (1-60 minutes).")
     sp.add_argument("name")

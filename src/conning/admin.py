@@ -5,6 +5,7 @@ interactive terminal. An agent calling `conn add` from its shell has no TTY, so 
 as pending and does nothing until a human runs `conn approve <name>`.
 """
 
+import contextlib
 import fnmatch
 import getpass
 import re
@@ -13,11 +14,11 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Protocol
 
-from conning import audit, paths, ssh
+from conning import audit, paths, secrets, ssh
 from conning.core import PENDING, Core
 from conning.policy import SAFE, WRAPPERS, policy_argv, program, remembered_rule
 from conning.secrets import SecretError, store_in_keychain
-from conning.state import Approval, Job, grant_lease, set_problem
+from conning.state import Approval, Job, grant_lease, rename_target, set_problem
 from conning.targets import AUTHS, MODES, NAME_RE, Target, TargetFileError, load_targets, save_targets, select
 
 MAX_LEASE_MINUTES = 60
@@ -400,6 +401,42 @@ def remove(io: IO, name: str) -> int:
     ssh.pin_host_keys(name, [])
     audit.record("target", target=name, change="removed")
     io.say(f"removed {name}")
+    return 0
+
+
+def rename(io: IO, old: str, new: str) -> int:
+    """Human only: give a target a new name, and carry everything kept under the old one along: its
+    pinned host keys, the password Conning stored for it, a lease, pending approvals and running jobs."""
+    if (code := _need_tty(io, "renaming a target")) is not None:
+        return code
+    path = paths.targets_file()
+    targets = load_targets(path)
+    if old not in targets:
+        io.say(f"error: no target {old}")
+        return 1
+    if not NAME_RE.match(new):
+        io.say("error: target names use letters, digits, '.', '_' and '-'")
+        return 1
+    if new in targets:
+        io.say(f"error: {new} already exists")
+        return 1
+    t = replace(targets[old], name=new)
+    stored = t.secret == f"keychain:{secrets.KEYCHAIN_SERVICE}/{old}"  # the password `conn add` saved
+    if stored:  # moved, so a later `conn add <old>` can't overwrite the password this target uses
+        try:
+            t = replace(t, secret=secrets.move_in_keychain(t.secret, new))
+        except Exception as e:  # noqa: BLE001 - every keyring backend fails differently
+            io.say(f"error: can't move {old}'s password in the OS keychain ({e}); nothing changed")
+            return 1
+    save_targets(path, {(new if name == old else name): (t if name == old else o) for name, o in targets.items()})
+    if stored:
+        with contextlib.suppress(Exception):  # a leftover copy is harmless: nothing points at it
+            secrets.forget(targets[old].secret)
+    ssh.rename_host_keys(old, new)
+    rename_target(old, new)
+    (paths.state_dir() / "ssh" / f"{old}.conf").unlink(missing_ok=True)
+    audit.record("target", target=new, change="renamed", was=old)
+    io.say(f"renamed {old} to {new}")
     return 0
 
 

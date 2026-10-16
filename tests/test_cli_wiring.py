@@ -58,17 +58,19 @@ def test_errors_exit_nonzero(fake, capsys):
 
 def test_admin_commands_reach_admin(fake, monkeypatch):
     seen = []
-    for name in ("add", "approve", "remove", "test", "lease", "import_ssh_config"):
+    for name in ("add", "approve", "remove", "rename", "test", "lease", "import_ssh_config"):
         monkeypatch.setattr(admin, name, lambda *a, _n=name, **k: seen.append((_n, a, k)) or 0)
     assert cli.main(["add", "lab", "--host", "h", "--user", "u", "--tag", "x", "--os", "windows"]) == 0
     assert cli.main(["approve", "a:ab", "--always"]) == 0
     assert cli.main(["rm", "lab"]) == 0
+    assert cli.main(["rename", "lab", "lab2"]) == 0
     assert cli.main(["test", "lab"]) == 0
     assert cli.main(["lease", "lab", "--minutes", "5"]) == 0
     assert cli.main(["import", "--match", "lab-*"]) == 0
-    assert [s[0] for s in seen] == ["add", "approve", "remove", "test", "lease", "import_ssh_config"]
+    assert [s[0] for s in seen] == ["add", "approve", "remove", "rename", "test", "lease", "import_ssh_config"]
     assert seen[0][2]["tags"] == ["x"] and seen[0][2]["os_name"] == "windows"
-    assert seen[1][2] == {"always": True} and seen[4][1] == (fake.io, "lab", 5) and seen[5][1] == (fake.io, "lab-*")
+    assert seen[1][2] == {"always": True} and seen[3][1] == (fake.io, "lab", "lab2")
+    assert seen[5][1] == (fake.io, "lab", 5) and seen[6][1] == (fake.io, "lab-*")
 
 
 def test_help(capsys):

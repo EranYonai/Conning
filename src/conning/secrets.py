@@ -64,6 +64,19 @@ def store_in_keychain(account: str, value: str, service: str = KEYCHAIN_SERVICE)
     return f"keychain:{service}/{account}"
 
 
+def move_in_keychain(ref: str, account: str) -> str:
+    """Copy the secret behind a keychain reference to another account; return the new reference.
+    The caller deletes the old item (`forget`) once nothing points at it."""
+    value = resolve(ref)
+    service = ref[len("keychain:") :].rpartition("/")[0] or KEYCHAIN_SERVICE
+    return store_in_keychain(account, value, service)
+
+
+def forget(ref: str) -> None:
+    service, _, account = ref[len("keychain:") :].rpartition("/")
+    _keyring().delete_password(service or KEYCHAIN_SERVICE, account)
+
+
 def _keyring():
     import keyring
 

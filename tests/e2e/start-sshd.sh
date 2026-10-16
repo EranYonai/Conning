@@ -6,7 +6,7 @@
 #
 #   sudo sh tests/e2e/start-sshd.sh /tmp/conning-sshd >> "$GITHUB_ENV"         # in CI
 #   eval "$(sudo sh tests/e2e/start-sshd.sh /tmp/conning-sshd | sed 's/^/export /')"   # by hand
-#   uv run pytest -m e2e
+#   uv run --with keyrings.alt pytest -m e2e
 set -eu
 dir=${1:?usage: start-sshd.sh <empty dir> [port]}
 port=${2:-2222}

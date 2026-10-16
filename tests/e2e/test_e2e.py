@@ -1,15 +1,21 @@
-"""End to end: the real `conn` and the real MCP server against a real OpenSSH server, no mocks.
+"""End to end: every command in `conn help`, and the MCP server, against a real OpenSSH server. No mocks.
 
 The target is the throwaway sshd that `tests/e2e/start-sshd.sh` starts (CI's e2e job runs it; see
 the script for running it by hand). Every call is a fresh `conn` process, as a human or an agent
-would make it. Human-only commands get a pseudo-terminal and their answers typed into it.
+would make it. Human-only commands run in a pseudo-terminal and get their answers typed when asked.
+`test_every_command_in_help_is_tested_here` fails when a command is added without a test here.
 """
 
 import asyncio
+import json
 import os
 import re
+import select
+import signal
 import subprocess
 import sys
+import uuid
+from pathlib import Path
 
 import pytest
 
@@ -21,16 +27,23 @@ pytestmark = [
 USER = os.environ.get("CONNING_E2E_USER", "")
 KEY = os.environ.get("CONNING_E2E_KEY", "")
 SSHD = ("--host", "127.0.0.1", "--port", PORT or "", "--user", USER)
+REMOTE = f"/tmp/conning-e2e-{uuid.uuid4().hex[:8]}"  # a fresh remote dir per run
+PROMPT_ENDS = (b":", b"]")  # "password for ...:", "[y/N]", "[d]eny:"
 
 
 class Conn:
-    def __init__(self, home):
+    def __init__(self, home: Path):
+        (home / "home").mkdir(parents=True, exist_ok=True)
+        self.home = home
         self.env = {
             **os.environ,
+            "HOME": str(home / "home"),  # for ~/.ssh/config (import) and the agent clients' files (install)
             "CONNING_HOME": str(home),
             "CONNING_STATE": str(home / "state"),
             "CONNING_NOTIFY": "0",
             "CONNING_IN_CONTAINER": "0",
+            "PYTHON_KEYRING_BACKEND": "keyrings.alt.file.PlaintextKeyring",  # a keychain CI can have
+            "XDG_DATA_HOME": str(home / "keyring"),
         }
 
     def __call__(self, *args: str, timeout: int = 120) -> str:
@@ -45,28 +58,91 @@ class Conn:
         )
         return done.stdout + done.stderr
 
-    def human(self, *args: str, answers: str = "") -> str:
-        """Like a human at a terminal, typing `answers` (one per line) when asked."""
-        import pty
+    def terminal(self, *args: str) -> "Terminal":
+        return Terminal(self.env, args)
 
-        main, side = pty.openpty()
-        proc = subprocess.Popen(
-            [sys.executable, "-m", "conning", *args], stdin=side, stdout=side, stderr=side, env=self.env
+    def human(self, *args: str, answers: str = "") -> str:
+        """Like a human at a terminal, typing each line of `answers` when asked."""
+        term = self.terminal(*args)
+        for line in answers.splitlines(keepends=True):
+            term.wait_for_prompt()
+            term.send(line)
+        return term.finish()
+
+
+class Terminal:
+    """`conn` in a pseudo-terminal that is its controlling terminal, so getpass and prompts work."""
+
+    def __init__(self, env: dict, args: tuple[str, ...]):
+        import fcntl
+        import pty
+        import termios
+
+        def take_terminal():
+            os.setsid()
+            fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+
+        self.fd, side = pty.openpty()
+        self.proc = subprocess.Popen(
+            [sys.executable, "-m", "conning", *args],
+            stdin=side,
+            stdout=side,
+            stderr=side,
+            env=env,
+            preexec_fn=take_terminal,
         )
         os.close(side)
-        os.write(main, answers.encode())
-        out = b""
-        while True:
-            try:
-                chunk = os.read(main, 4096)
-            except OSError:  # the terminal closes when the process exits
+        self.out = b""
+        self.mark = 0
+
+    def _read(self, wait: float) -> bool:
+        """Read what is there; False when nothing came within `wait` seconds."""
+        if not select.select([self.fd], [], [], wait)[0]:
+            return False
+        try:
+            chunk = os.read(self.fd, 4096)
+        except OSError:  # the terminal closed
+            return False
+        self.out += chunk
+        return bool(chunk)
+
+    def text(self) -> str:
+        return self.out.decode(errors="replace").replace("\r\n", "\n")
+
+    def wait_for_prompt(self, seconds: float = 60) -> None:
+        for _ in range(int(seconds / 0.2)):
+            if not self._read(0.2):
+                if self.proc.poll() is not None:
+                    return
+                if len(self.out) > self.mark and self.out.rstrip(b" ").endswith(PROMPT_ENDS):
+                    return
+        raise AssertionError(f"no prompt from conn:\n{self.text()}")
+
+    def expect(self, text: str, seconds: float = 60) -> None:
+        for _ in range(int(seconds / 0.2)):
+            if text in self.text()[self.mark :]:
+                return
+            self._read(0.2)
+        raise AssertionError(f"{text!r} not in:\n{self.text()}")
+
+    def send(self, line: str) -> None:
+        os.write(self.fd, line.encode())
+        self.mark = len(self.out)
+
+    def finish(self, seconds: float = 120) -> str:
+        """Read until conn exits. A shared ssh connection it started may keep the terminal open."""
+        for _ in range(int(seconds / 0.2)):
+            if not self._read(0.2) and self.proc.poll() is not None:
                 break
-            if not chunk:
-                break
-            out += chunk
-        os.close(main)
-        proc.wait(timeout=120)
-        return out.decode(errors="replace").replace("\r\n", "\n")
+        else:
+            self.proc.kill()
+            raise AssertionError(f"conn did not exit:\n{self.text()}")
+        os.close(self.fd)
+        return self.text()
+
+    def stop(self) -> str:
+        self.proc.send_signal(signal.SIGINT)
+        return self.finish(30)
 
 
 def found(pattern: str, text: str) -> str:
@@ -81,23 +157,56 @@ def add_live(conn: Conn, name: str, *extra: str) -> None:
     assert f"{name} is live: linux bash" in out, out
 
 
+def pending_id(out: str) -> str:
+    return found(r"status=pending_approval id=a:(\w+)", out)
+
+
 @pytest.fixture(scope="module")
 def conn(tmp_path_factory):
     c = Conn(tmp_path_factory.mktemp("conning"))
     add_live(c, "lab", "--auth", "key", "--key", KEY)
     add_live(c, "free", "--auth", "key", "--key", KEY)
     assert "lease on free" in c.human("lease", "free", "--minutes", "30", answers="y\n")
+    assert c("run", "free", "mkdir", "-p", REMOTE).startswith("exit=0")
     return c
+
+
+# conn add / approve / test / targets
 
 
 def test_an_agent_proposes_a_target_and_a_human_approves_it(tmp_path):
     c = Conn(tmp_path)
-    out = c("add", "new", *SSHD, "--auth", "key", "--key", KEY)
-    assert "saved as pending" in out
+    assert "saved as pending" in c("add", "new", *SSHD, "--auth", "key", "--key", KEY)
+    assert re.search(r"new\s+linux\s+bash\s+user=conning-e2e .*mode=pending", c("targets"))
     assert c("run", "new", "uname", "-s").startswith("blocked  new  (target is pending")
-    assert "is live" in c.human("approve", "new", answers="y\n")
-    assert re.search(r"new\s+linux\s+bash\s+user=conning-e2e .*reach=ok", c("ls", "--check"))
+    assert "needs a human" in c("approve", "new")
+    out = c.human("approve", "new", answers="y\n")
+    assert "host key ssh-ed25519" in out and "new is live: linux bash mode=ask" in out
+    assert re.search(r"new\s+linux\s+bash\s+user=conning-e2e .*reach=ok", c("targets", "--check"))
+    assert re.search(r"new .*reach=ok", c("ls", "--check"))  # the alias
     assert "new: ok, linux bash, host key pinned" in c("test", "new")
+
+
+def test_a_human_adds_a_target_and_is_asked_for_what_is_missing(tmp_path):
+    c = Conn(tmp_path)
+    out = c.human("add", "asked", "--port", PORT, "--os", "linux", answers=f"127.0.0.1\n{USER}\nkey\n{KEY}\ny\n")
+    assert "host: " in out and "private key file: " in out and "asked is live: linux bash" in out
+    assert c("run", "asked", "whoami").startswith("exit=0")
+
+
+def test_a_typed_password_goes_to_the_keychain_and_follows_a_rename(tmp_path):
+    pytest.importorskip("keyrings.alt")
+    c = Conn(tmp_path)
+    password = os.environ["CONNING_E2E_PASSWORD"]
+    out = c.human("add", "pw", *SSHD, "--auth", "password", answers=f"{password}\ny\n")
+    assert "secret=keychain:conning/pw" in out and "pw is live" in out
+    assert "conning-e2e" in c("run", "pw", "whoami")
+    assert "renamed pw to pw2" in c.human("rename", "pw", "pw2")
+    assert 'secret = "keychain:conning/pw2"' in (tmp_path / "targets.toml").read_text()
+    assert "conning-e2e" in c("run", "pw2", "whoami")
+    for where in (tmp_path / "targets.toml", tmp_path / "state"):  # only the keychain holds it
+        leaked = subprocess.run(["grep", "-r", password, str(where)], capture_output=True)
+        assert leaked.returncode == 1, leaked.stdout
 
 
 def test_password_login_from_a_secret_reference(tmp_path):
@@ -110,22 +219,127 @@ def test_password_login_from_a_secret_reference(tmp_path):
         assert (out.startswith("exit=0") and "conning-e2e" in out) == (name == "pw"), out
 
 
+def test_key_login_through_ssh_agent(tmp_path):
+    c = Conn(tmp_path)
+    agent = subprocess.run(["ssh-agent", "-s"], capture_output=True, text=True, check=True).stdout
+    c.env.update(re.findall(r"(SSH_AUTH_SOCK|SSH_AGENT_PID)=([^;]+);", agent))
+    try:
+        subprocess.run(["ssh-add", "-q", KEY], env=c.env, check=True, capture_output=True)
+        add_live(c, "agent", "--auth", "ssh-agent")
+        assert "conning-e2e" in c("run", "agent", "whoami")
+    finally:
+        subprocess.run(["ssh-agent", "-k"], env=c.env, capture_output=True)
+
+
+def test_like_tags_and_fan_out(tmp_path):
+    c = Conn(tmp_path)
+    add_live(c, "one", "--auth", "key", "--key", KEY, "--tag", "pool")
+    add_live(c, "two", "--like", "one", "--user", USER, "--auth", "key", "--key", KEY)
+    assert "tags=pool" in c("targets", "two")  # --like copies the tags
+    assert len(c("targets", "tag:pool").splitlines()) == 2
+    assert len(c("targets", "one,two").splitlines()) == 2
+    out = c("run", "one,two", "uname", "-s")
+    assert out.startswith("2 targets: 2 ok, 0 failed") and "one,two  (identical output)" in out
+    assert c("run", "tag:pool", "hostname").startswith("2 targets: 2 ok")
+
+
+def test_retry_a_target_that_could_not_be_reached(tmp_path):
+    c = Conn(tmp_path)
+    c("add", "late", "--host", "127.0.0.1", "--port", "1", "--user", USER, "--auth", "key", "--key", KEY)
+    assert "nothing listens on 127.0.0.1:1" in c.human("approve", "late", answers="y\n")
+    toml = tmp_path / "targets.toml"
+    toml.write_text(toml.read_text().replace("port = 1\n", f"port = {PORT}\n"))  # the human fixes it
+    assert "needs a human" in c("add", "late", "--retry")
+    assert "late is live" in c.human("add", "late", "--retry", answers="y\n")
+
+
+def test_the_target_file_is_fail_closed(tmp_path):
+    c = Conn(tmp_path)
+    (tmp_path / "targets.toml").write_text('[x]\nhost = "127.0.0.1"\nbogus = 1\n')
+    assert "unknown key(s) bogus" in c("targets")
+
+
+# conn import
+
+
+def test_import_from_ssh_config(tmp_path):
+    c = Conn(tmp_path)
+    ssh_dir = tmp_path / "home" / ".ssh"
+    ssh_dir.mkdir()
+    (ssh_dir / "config").write_text(
+        f"Host imp1\n  HostName 127.0.0.1\n  Port {PORT}\n  User {USER}\n  IdentityFile {KEY}\n  ForwardAgent yes\n\n"
+        f"Host other\n  HostName 127.0.0.1\n"
+    )
+    out = c("import", "--match", "imp*")
+    assert "imp1: forwardagent in your ssh config; Conning drops it" in out
+    assert "imported 1 target(s) as pending: imp1" in out
+    assert "imp1 is live" in c.human("approve", "imp1", answers="y\n")
+    assert "conning-e2e" in c("run", "imp1", "whoami")
+
+
+# conn run / approve / allow / deny / lease
+
+
 def test_read_only_commands_run_and_others_wait_for_a_human(conn):
     out = conn("run", "lab", "uname", "-s")
     assert out.startswith("exit=0") and "Linux" in out
-    out = conn("run", "lab", "touch", "/tmp/conning-e2e-approved")
-    approval = found(r"status=pending_approval id=a:(\w+)", out)
+    approval = pending_id(conn("run", "lab", "touch", f"{REMOTE}-once"))
     assert "exit=0" in conn.human("approve", f"a:{approval}", answers="a\n")
     assert "exit=0" in conn("read", f"a:{approval}")
     assert conn("run", "lab", "lab", "whoami").startswith("error: 'lab' is a target, not a command")
 
 
+def test_a_human_denies_or_always_allows(conn):
+    denied = pending_id(conn("run", "lab", "rm", "-f", f"{REMOTE}-nope"))
+    assert f"denied a:{denied}" in conn.human("approve", f"a:{denied}", answers="d\n")
+    assert conn("read", f"a:{denied}").startswith(f"status=denied id=a:{denied}")
+    always = pending_id(conn("run", "lab", "touch", f"{REMOTE}-always"))
+    assert f"always allowing 'touch {REMOTE}-always' on lab" in conn.human("approve", "--always", f"a:{always}")
+    assert conn("run", "lab", "touch", f"{REMOTE}-always").startswith("exit=0")  # no question this time
+
+
+def test_a_human_running_a_command_is_asked_right_there(conn):
+    out = conn.human("run", "lab", "touch", f"{REMOTE}-asked", answers="a\n")
+    assert "needs approval on lab" in out and "exit=0" in out
+
+
+def test_run_options(conn):
+    assert conn("run", "--cwd", "/tmp", "lab", "pwd").splitlines()[1] == "/tmp"
+    assert "shell syntax always asks" in conn("run", "--shell", "lab", "echo hi | tr a-z A-Z")
+    out = conn("run", "--max-bytes", "300", "free", "seq", "1", "1000")
+    assert len(out.encode()) <= 300 and "lines omitted" in out
+    out = conn("run", "--grep", "^99[0-9]$", "free", "seq", "1", "1000")
+    assert out.splitlines()[1:] == [str(n) for n in range(990, 1000)]
+
+
+def test_observe_mode_refuses_what_is_not_read_only(tmp_path):
+    c = Conn(tmp_path)
+    add_live(c, "obs", "--auth", "key", "--key", KEY, "--mode", "observe")
+    assert c("run", "obs", "touch", "/tmp/x").startswith("refused  obs  (mode=observe")
+    assert c("run", "obs", "uname").startswith("exit=0")
+
+
 def test_allow_and_deny_rules(conn):
     assert "status=pending_approval" in conn("run", "lab", "date")
     conn.human("allow", "lab", "date", answers="y\n")
+    assert "'date'" in conn("allow", "lab")  # listing needs no human
     assert conn("run", "lab", "date", "-u").startswith("exit=0")
     conn("deny", "lab", "date")
     assert "status=pending_approval" in conn("run", "lab", "date")
+    assert "needs a human" in conn("allow", "lab", "reboot")
+
+
+def test_a_lease_lets_anything_run_for_a_while(tmp_path):
+    c = Conn(tmp_path)
+    add_live(c, "box", "--auth", "key", "--key", KEY)
+    assert "status=pending_approval" in c("run", "box", "sh", "-c", "echo hi; echo there")
+    assert "needs a human" in c("lease", "box")
+    assert "lease on box for 5 minutes" in c.human("lease", "box", "--minutes", "5", answers="y\n")
+    assert c("run", "box", "sh", "-c", "echo hi; echo there").splitlines()[1:] == ["hi", "there"]
+    assert "warn box has a lease" in c("doctor")
+
+
+# conn read
 
 
 def test_long_jobs_are_polled_signalled_and_timed_out(conn):
@@ -133,19 +347,25 @@ def test_long_jobs_are_polled_signalled_and_timed_out(conn):
     job = found(r"job=j:(\w+)", out)
     out = conn("read", f"j:{job}", "--wait", "15")
     assert out.startswith("exit=0") and "tick 3" in out
-    out = conn("run", "free", "--wait", "0", "sleep", "300")
-    job = found(r"job=j:(\w+)", out)
-    assert "signal=TERM sent" in conn("read", f"j:{job}", "--signal", "TERM")
-    assert conn("read", f"j:{job}", "--wait", "10").startswith("exit=143")
+    for sig, code in (("INT", 130), ("TERM", 143), ("KILL", 137)):
+        job = found(r"job=j:(\w+)", conn("run", "free", "--wait", "0", "sleep", "300"))
+        assert f"signal={sig} sent" in conn("read", f"j:{job}", "--signal", sig)
+        assert conn("read", f"j:{job}", "--wait", "10").startswith(f"exit={code}")
+    assert conn("run", "free", "--wait", "1", "sleep", "3").startswith("status=running job=j:")
     assert conn("run", "free", "--timeout", "2", "sleep", "30").startswith("exit=124")
 
 
 def test_big_output_is_capped_and_paged(conn):
     out = conn("run", "free", "seq", "1", "100000")
-    assert len(out.encode()) <= 8192 + 512
+    assert len(out.encode()) <= 8192
     saved = found(r"out=o:(\w+)", out)
     assert conn("read", f"o:{saved}", "--range", "500-502").splitlines()[-3:] == ["500", "501", "502"]
+    assert conn("read", f"o:{saved}", "--range", "-2").splitlines()[-2:] == ["99999", "100000"]
     assert "99999" in conn("read", f"o:{saved}", "--grep", "^9999[0-9]$")
+    assert len(conn("read", f"o:{saved}", "--max-bytes", "200").encode()) <= 200
+
+
+# conn transfer, and remote files through read
 
 
 def test_remote_files_and_transfers(conn, tmp_path):
@@ -153,10 +373,23 @@ def test_remote_files_and_transfers(conn, tmp_path):
     assert out.startswith("file=lab:/etc/os-release lines=1-2")
     blob = tmp_path / "blob.bin"
     blob.write_bytes(os.urandom(200_000))
-    assert "sha256 verified" in conn("transfer", f"local:{blob}", "free:/tmp/conning-e2e.bin")
+    assert "sha256 verified" in conn("transfer", f"local:{blob}", f"free:{REMOTE}/blob.bin")
     back = tmp_path / "back.bin"
-    assert "sha256 verified" in conn("transfer", "free:/tmp/conning-e2e.bin", f"local:{back}")
+    assert "sha256 verified" in conn("transfer", f"free:{REMOTE}/blob.bin", f"local:{back}")
     assert back.read_bytes() == blob.read_bytes()
+
+
+def test_directory_transfers(conn, tmp_path):
+    tree = tmp_path / "tree"
+    (tree / "sub").mkdir(parents=True)
+    (tree / "a.txt").write_text("a")
+    (tree / "sub" / "b.txt").write_text("b")
+    assert conn("transfer", f"local:{tree}", f"free:{REMOTE}/tree").startswith("ok directory")
+    assert conn("transfer", f"free:{REMOTE}/tree", f"local:{tmp_path / 'back'}").startswith("ok directory")
+    assert (tmp_path / "back" / "sub" / "b.txt").read_text() == "b"
+
+
+# secrets
 
 
 def test_injected_secrets_never_reach_the_output(tmp_path):
@@ -172,6 +405,9 @@ def test_injected_secrets_never_reach_the_output(tmp_path):
     assert leaked.returncode == 1, leaked.stdout
 
 
+# conn rename / rm
+
+
 def test_rename_keeps_the_pinned_key_and_rules(tmp_path):
     c = Conn(tmp_path)
     add_live(c, "old", "--auth", "key", "--key", KEY)
@@ -181,28 +417,127 @@ def test_rename_keeps_the_pinned_key_and_rules(tmp_path):
     assert "renaming a target needs a human" in c("rename", "new", "agent-name")
 
 
-def test_the_mcp_server_gives_the_same_answers(conn):
+def test_rm(tmp_path):
+    c = Conn(tmp_path)
+    add_live(c, "gone", "--auth", "key", "--key", KEY)
+    assert "removed gone" in c("rm", "gone")
+    assert "error: unknown target(s) gone" in c("run", "gone", "true")
+
+
+# conn watch
+
+
+def test_watch_shows_activity_and_asks_for_approvals(tmp_path):
+    conn = Conn(tmp_path)  # no approvals left over from other tests
+    add_live(conn, "lab", "--auth", "key", "--key", KEY)
+    quiet = conn.terminal("watch", "--no-prompt", "--history", "0")
+    quiet.expect("watching; Ctrl-C to stop")
+    conn("run", "lab", "ls", "-d", "/srv")
+    quiet.expect("ls -d /srv")
+    quiet.expect("| /srv")
+    quiet.stop()
+
+    term = conn.terminal("watch", "--history", "0")
+    term.expect("watching; Ctrl-C to stop")
+    approval = pending_id(conn("run", "lab", "touch", f"{REMOTE}-watched"))
+    term.expect(f"a:{approval} on lab")
+    term.wait_for_prompt()
+    term.send("a\n")
+    assert conn("read", f"a:{approval}", "--wait", "15").count("exit=0") == 1
+    term.stop()
+
+
+# conn mcp
+
+
+def mcp_session(env: dict, work, command=(sys.executable, "-m", "conning", "mcp"), on_elicit=None):
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
 
-    async def session():
-        server = StdioServerParameters(command=sys.executable, args=["-m", "conning", "mcp"], env=conn.env)
-        async with stdio_client(server) as (r, w), ClientSession(r, w) as s:
+    async def go():
+        server = StdioServerParameters(command=command[0], args=list(command[1:]), env=env)
+        async with stdio_client(server) as (r, w), ClientSession(r, w, elicitation_callback=on_elicit) as s:
             await s.initialize()
-            tools = sorted(t.name for t in (await s.list_tools()).tools)
-            ran = (await s.call_tool("run", {"target": "lab", "argv": ["uname", "-s"]})).content[0].text
-            listed = (await s.call_tool("targets", {})).content[0].text
-            return tools, ran, listed
+            return await work(s)
 
-    tools, ran, listed = asyncio.run(session())
+    return asyncio.run(go())
+
+
+async def call(session, tool: str, **args) -> str:
+    return (await session.call_tool(tool, args)).content[0].text
+
+
+def test_the_mcp_server_gives_the_same_answers(conn):
+    async def work(s):
+        tools = sorted(t.name for t in (await s.list_tools()).tools)
+        return tools, await call(s, "run", target="lab", argv=["uname", "-s"]), await call(s, "targets")
+
+    tools, ran, listed = mcp_session(conn.env, work)
     assert tools == ["read", "run", "targets", "transfer"]
     assert ran.startswith("exit=0") and "Linux" in ran
     assert "lab" in listed and "127.0.0.1" not in listed  # never the host
 
 
-def test_doctor_and_rm(conn):
+def test_approving_in_the_agent_client(conn):
+    from mcp_types import ElicitResult
+
+    asked = []
+
+    async def on_elicit(context, params):
+        asked.append(params.message)
+        return ElicitResult(action="accept", content={"decision": "once"})
+
+    async def work(s):
+        return await call(s, "run", target="lab", argv=["touch", f"{REMOTE}-client"])
+
+    assert mcp_session(conn.env, work, on_elicit=on_elicit).count("exit=0") == 1
+    assert f"touch {REMOTE}-client" in asked[0]
+    command = (sys.executable, "-m", "conning", "mcp", "--no-approve-in-client")
+    assert "status=pending_approval" in mcp_session(conn.env, work, command, on_elicit)
+    assert len(asked) == 1
+
+
+def test_mcp_install_for_every_client(conn, tmp_path):
+    c = Conn(tmp_path)
+    c.env["PATH"] = os.pathsep.join([str(Path(sys.executable).parent), "/usr/bin", "/bin"])  # no real clients
+    home = tmp_path / "home"
+    assert "would write" in c("mcp", "install", "claude", "--dry-run") and not (home / ".claude").exists()
+    out = c("mcp", "install", "claude")
+    assert "claude is not on PATH; add the server with: claude mcp add" in out
+    deny = json.loads((home / ".claude" / "settings.json").read_text())["permissions"]["deny"]
+    assert "Bash(ssh *)" in deny and "Bash(conn approve *)" in deny and "Bash(conn rename *)" in deny
+    assert "nothing to change" in c("mcp", "install", "claude")
+    for client in ("codex", "cursor", "opencode", "pi"):
+        assert "wrote" in c("mcp", "install", client), client
+    assert '["conn", "rename"]' in (home / ".codex" / "rules" / "conning.rules").read_text()
+    entry = json.loads((home / ".cursor" / "mcp.json").read_text())["mcpServers"]["conning"]
+
+    async def work(s):  # the server exactly as a client would start it
+        return await call(s, "targets")
+
+    assert "lab" in mcp_session(conn.env, work, (entry["command"], *entry.get("args", [])))
+
+
+# conn doctor / help / --version
+
+
+def test_doctor(conn):
     out = conn("doctor")
-    assert "ok   2 target(s)" in out and "FAIL" not in out, out
-    add_live(conn, "gone", "--auth", "key", "--key", KEY)
-    assert "removed gone" in conn("rm", "gone")
-    assert "error: unknown target(s) gone" in conn("run", "gone", "true")
+    assert "ok   2 target(s)" in out and "ok   ssh found" in out and "FAIL" not in out, out
+
+
+def test_help_and_version(conn):
+    from conning import __version__
+
+    assert conn("--version").strip() == f"conning {__version__}"
+    out = conn("help")
+    assert out.startswith("usage: conn") and "targets (ls)" in out
+    readme = (Path(__file__).parents[2] / "README.md").read_text()
+    assert conn("help", "--markdown").strip() in readme
+
+
+def test_every_command_in_help_is_tested_here(conn):
+    commands = set(re.findall(r"^conn (\w+)", conn("help", "--markdown"), re.M))
+    source = Path(__file__).read_text()
+    untested = sorted(c for c in commands if f'"{c}"' not in source)
+    assert len(commands) >= 17 and not untested, f"add an e2e test for: {untested}"

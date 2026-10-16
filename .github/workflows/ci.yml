@@ -42,7 +42,7 @@ jobs:
       - run: uv sync
       - name: Start a throwaway sshd on 127.0.0.1 as the target
         run: sudo sh tests/e2e/start-sshd.sh "$RUNNER_TEMP/sshd" >> "$GITHUB_ENV"
-      - run: uv run pytest -m e2e -v
+      - run: uv run --with keyrings.alt pytest -m e2e -v  # a file keychain, for passwords typed at `conn add`
       - name: sshd log
         if: failure()
         run: sudo cat "$RUNNER_TEMP/sshd/sshd.log"

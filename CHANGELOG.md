@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0 (2026-10-16)
+
+- Jump hosts: a target can name another target as its jump host (`conn add lab --host 10.0.0.5
+  --user tester --jump gw`, or `jump = "gw"` in the target file; chains work). Every hop gets its own
+  pinned, forwarding-off block in the generated ssh config, linked by ProxyJump, and logs in with its
+  own auth; with passwords on several hops, each hop gets only its own. Approving a target behind a
+  jump host fetches its host key through the pinned hops, sending no credential, for you to confirm.
+- `conn import` keeps a ProxyJump to another host it imports, and never saves a jump loop.
+- `conn rm` won't remove a jump host other targets use; `conn rename` updates the targets that jump through it.
+- A bare ssh failure behind a jump host points at `conn test <jump host>`, since ssh hides the hop's own errors.
+
 ## 0.4.0 (2026-10-16)
 
 - Each target gets its own shared ssh connection. Before, two targets for the same host, port and user

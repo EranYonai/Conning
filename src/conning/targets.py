@@ -31,6 +31,7 @@ class Target:
     secret: str | None = None  # a reference such as "op://Lab/vm/password" or "keychain:lab/vm"
     key: str | None = None  # path to a private key file, for auth = "key"
     hostkey: str | None = None  # pinned fingerprint, "SHA256:..."
+    jump: str | None = None  # another target to reach this one through (ssh ProxyJump), D49
     os: str = "linux"
     shell: str = "bash"
     mode: str = "ask"
@@ -51,7 +52,29 @@ def load_targets(path: Path) -> dict[str, Target]:
         data = tomllib.loads(path.read_text(encoding="utf-8"))
     except tomllib.TOMLDecodeError as e:
         raise TargetFileError(f"{path}: {e}") from e
-    return {name: _parse(name, table, path) for name, table in data.items()}
+    targets = {name: _parse(name, table, path) for name, table in data.items()}
+    for t in targets.values():
+        try:
+            jump_chain(targets, t)
+        except TargetFileError as e:
+            raise TargetFileError(f"{path}: {e}") from e
+    return targets
+
+
+def jump_chain(targets: dict[str, Target], t: Target) -> list[Target]:
+    """The jump hosts on the way to `t`, in the order ssh dials them. Unknown names and loops are errors."""
+    chain: list[Target] = []
+    seen = {t.name}
+    name = t.jump
+    while name is not None:
+        if name in seen:
+            raise TargetFileError(f"{t.name}: jump hosts loop back to {name}")
+        if name not in targets:
+            raise TargetFileError(f"{t.name}: jump host {name} is not a target")
+        seen.add(name)
+        chain.insert(0, targets[name])
+        name = targets[name].jump
+    return chain
 
 
 def _parse(name: str, table: object, path: Path) -> Target:
@@ -76,6 +99,9 @@ def _parse(name: str, table: object, path: Path) -> Target:
         isinstance(rule, list) and rule and all(isinstance(w, str) and w for w in rule) for rule in allow
     ):
         raise TargetFileError(f"{where}: 'allow' must be a list of non-empty word lists, e.g. [[\"pytest\"]]")
+    jump = table.get("jump")
+    if jump is not None and (not isinstance(jump, str) or not NAME_RE.match(jump)):
+        raise TargetFileError(f"{where}: 'jump' must be the name of another target")
     if not isinstance(table.get("safe", True), bool):
         raise TargetFileError(f"{where}: 'safe' must be true or false")
     inject = table.get("inject", {})
@@ -90,6 +116,7 @@ def _parse(name: str, table: object, path: Path) -> Target:
         secret=table.get("secret"),
         key=table.get("key"),
         hostkey=table.get("hostkey"),
+        jump=jump,
         os=table.get("os", "linux"),
         shell=table.get("shell", "pwsh" if table.get("os") == "windows" else "bash"),
         mode=table.get("mode", "ask"),
@@ -150,7 +177,7 @@ def dump_targets(targets: dict[str, Target]) -> str:
     out = ["# Conning targets. Safe to read: this file holds no secrets, only references to them.\n"]
     for t in targets.values():
         out.append(f"[{t.name}]")
-        for key in "host port user auth secret key hostkey os shell mode status safe".split():
+        for key in "host port user jump auth secret key hostkey os shell mode status safe".split():
             value = getattr(t, key)
             if value is not None and (key in ("host", "user") or value != getattr(defaults, key)):
                 out.append(f"{key} = {_toml_value(value)}")

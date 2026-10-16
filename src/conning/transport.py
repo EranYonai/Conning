@@ -60,7 +60,7 @@ class SSHTransport:
 
     def secrets(self, t: Target) -> list[str]:
         values = list(self.inject_env(t).values())
-        if t.auth == "password":
+        if t.auth == "password" or t.jump:  # a jump host may log in with a password too
             values += self._conn(t).secrets
         return values
 
@@ -69,6 +69,8 @@ class SSHTransport:
             reason = ssh.explain_ssh_failure(output)
             if reason.startswith("connection refused"):
                 return ssh.no_ssh_hint(t)
+            if reason == "ssh failed" and t.jump:  # ssh hides a jump host's own errors behind a shared connection
+                return f"ssh failed, possibly at jump host {t.jump} (check it with: conn test {t.jump})"
             return reason
         text = output.decode(errors="replace").strip()
         return f"exit={rc}: {text.splitlines()[-1] if text else 'no output'}"

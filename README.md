@@ -99,7 +99,7 @@ conn read [--wait WAIT] [--range RANGE] [--grep GREP] [--signal {INT,TERM,KILL}]
 conn transfer source dest
     Copy files: local:<path> to <target>:<path>, or back. sha256 checked.
 
-conn add [--host HOST] [--user USER] [--like TARGET] [--port PORT]
+conn add [--host HOST] [--user USER] [--like TARGET] [--port PORT] [--jump TARGET]
                 [--auth {ssh-agent,key,password}] [--secret SECRET] [--key KEY]
                 [--os {linux,windows,darwin}] [--mode {observe,ask,lease}] [--tag TAG] [--retry]
                 name
@@ -146,6 +146,11 @@ conn help [--markdown]
 A target is one login on one machine. To use the same machine as another user, add it again:
 `conn add lab-tester --like lab --user tester` copies the host, port, OS and tags and asks for the new
 user's password. `conn targets` shows which user each target uses.
+
+A target behind a bastion names it as its jump host: add the bastion as a target first, then
+`conn add lab --host 10.0.0.5 --user tester --jump gw`. Every hop gets its own login and its own pinned
+host key, and `conn import` keeps a `ProxyJump` to another host it imports. The bastion is a target the
+agent can see too, so give it `--mode observe` if the agent should only pass through it.
 
 A target you add with `conn add` from an agent session is saved as **pending**. It does nothing until
 the human runs `conn approve <name>`, which shows the host, the pinned host-key fingerprint and where

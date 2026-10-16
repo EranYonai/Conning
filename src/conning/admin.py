@@ -19,7 +19,17 @@ from conning.core import PENDING, Core
 from conning.policy import SAFE, WRAPPERS, policy_argv, program, remembered_rule
 from conning.secrets import SecretError, store_in_keychain
 from conning.state import Approval, Job, grant_lease, rename_target, set_problem
-from conning.targets import AUTHS, MODES, NAME_RE, Target, TargetFileError, load_targets, save_targets, select
+from conning.targets import (
+    AUTHS,
+    MODES,
+    NAME_RE,
+    Target,
+    TargetFileError,
+    jump_chain,
+    load_targets,
+    save_targets,
+    select,
+)
 
 MAX_LEASE_MINUTES = 60
 APPROVE_WAIT = 10  # seconds `conn approve a:<id>` waits for the command before handing back its job id
@@ -83,6 +93,7 @@ def add(
     tags: list[str] | None = None,
     retry: bool = False,
     like: str | None = None,
+    jump: str | None = None,
 ) -> int:
     try:
         targets = load_targets(paths.targets_file())
@@ -95,6 +106,7 @@ def add(
             io.say(f"error: no target {like} to copy")
             return 1
         host, port, os_name = host or base.host, port or base.port, os_name or base.os
+        jump = jump or base.jump  # the same machine is reached the same way
         user = user or base.user
         tags = tags or list(base.tags)
         auth = auth or base.auth
@@ -105,6 +117,9 @@ def add(
         return 1
     if mode not in MODES:
         io.say(f"error: mode must be one of {', '.join(MODES)}")
+        return 1
+    if jump is not None and (jump == name or jump not in targets):
+        io.say(f"error: jump host {jump} is not a target; add it first")
         return 1
     if name in targets and not retry:
         io.say(f"error: {name} already exists (use --retry to probe it again, or conn rm {name})")
@@ -146,6 +161,7 @@ def add(
         mode=mode,
         tags=tuple(tags or ()),
         status="pending",
+        jump=jump,
     )
     if not io.tty:
         _save(t)
@@ -168,14 +184,15 @@ def _stays_pending(io: IO, t: Target, message: str, reason: str) -> int:
 def _enroll(core: Core, io: IO, t: Target) -> int:
     """Pin the host key the human confirms, probe OS and shell, and make the target live."""
     try:
-        keys = ssh.scan_host_keys(t.host, t.port)
-    except ssh.SSHError as e:
+        keys = ssh.scan_host_keys_via(t, ssh.hops(t)) if t.jump else ssh.scan_host_keys(t.host, t.port)
+    except (ssh.SSHError, SecretError) as e:
         return _stays_pending(io, t, f"error: {e}", str(e))
     if not keys:
         if not ssh.port_open(t.host, t.port):
             return _stays_pending(io, t, ssh.no_ssh_hint(t), "no SSH server answered")
         return _stays_pending(io, t, f"{t.name}: no host keys offered", "no host keys offered")
-    io.say(f"{t.name}: {t.user}@{t.host}:{t.port}  auth={t.auth}" + (f"  secret={t.secret}" if t.secret else ""))
+    via = f"  via {t.jump}" if t.jump else ""
+    io.say(f"{t.name}: {t.user}@{t.host}:{t.port}{via}  auth={t.auth}" + (f"  secret={t.secret}" if t.secret else ""))
     for key_type, fp, _ in keys:
         io.say(f"  host key {key_type:<20} {fp}")
     if not _confirm(io, "pin these host keys and make the target live?"):
@@ -396,6 +413,10 @@ def remove(io: IO, name: str) -> int:
     if name not in targets:
         io.say(f"error: no target {name}")
         return 1
+    through = [t.name for t in targets.values() if t.jump == name]
+    if through:
+        io.say(f"error: {', '.join(through)} jump through {name}; remove them or change their jump first")
+        return 1
     del targets[name]
     save_targets(path, targets)
     ssh.pin_host_keys(name, [])
@@ -428,7 +449,8 @@ def rename(io: IO, old: str, new: str) -> int:
         except Exception as e:  # noqa: BLE001 - every keyring backend fails differently
             io.say(f"error: can't move {old}'s password in the OS keychain ({e}); nothing changed")
             return 1
-    save_targets(path, {(new if name == old else name): (t if name == old else o) for name, o in targets.items()})
+    renamed = {name: replace(o, jump=new) if o.jump == old else o for name, o in targets.items()}
+    save_targets(path, {(new if name == old else name): (t if name == old else o) for name, o in renamed.items()})
     if stored:
         with contextlib.suppress(Exception):  # a leftover copy is harmless: nothing points at it
             secrets.forget(targets[old].secret)
@@ -478,7 +500,8 @@ UNSAFE_SSH_OPTIONS = ("forwardagent", "localforward", "remoteforward", "dynamicf
 
 
 def import_ssh_config(io: IO, match: str = "*", config: Path | None = None) -> int:
-    """Turn Host blocks of an ssh config into pending targets. Unsafe options are never copied."""
+    """Turn Host blocks of an ssh config into pending targets. Unsafe options are never copied; a
+    ProxyJump to another host that is (or becomes) a target is kept as its jump."""
     config = config or Path.home() / ".ssh" / "config"
     if not config.exists():
         io.say(f"error: {config} not found")
@@ -501,13 +524,17 @@ def import_ssh_config(io: IO, match: str = "*", config: Path | None = None) -> i
                 opts.setdefault(key, value)
     path = paths.targets_file()
     targets = load_targets(path)
+    chosen = [(a, o) for a, o in hosts if fnmatch.fnmatch(a, match) and a not in targets and NAME_RE.match(a)]
+    names = set(targets) | {alias for alias, _ in chosen}
     added = []
-    for alias, opts in hosts:
-        if not fnmatch.fnmatch(alias, match) or alias in targets or not NAME_RE.match(alias):
-            continue
+    for alias, opts in chosen:
         for option in UNSAFE_SSH_OPTIONS:
             if option in opts and opts[option].lower() not in ("no", "none"):
                 io.say(f"  ! {alias}: {option} in your ssh config; Conning drops it")
+        jump = opts.get("proxyjump")
+        if jump and jump.lower() != "none" and (jump not in names or jump == alias):  # user@host, a list...
+            io.say(f'  ! {alias}: ProxyJump {jump} is not a target here; add it, then set jump = "<name>"')
+        jump = jump if jump in names and jump != alias else None
         key = opts.get("identityfile")
         targets[alias] = Target(
             name=alias,
@@ -516,9 +543,16 @@ def import_ssh_config(io: IO, match: str = "*", config: Path | None = None) -> i
             port=int(opts.get("port", 22)),
             auth="key" if key else "ssh-agent",
             key=key,
+            jump=jump,
             status="pending",
         )
         added.append(alias)
+    for alias in added:  # two imported hosts jumping through each other would break the target file
+        try:
+            jump_chain(targets, targets[alias])
+        except TargetFileError as e:
+            io.say(f"  ! {e}; {alias} is imported without it")
+            targets[alias] = replace(targets[alias], jump=None)
     save_targets(path, targets)
     io.say(f"imported {len(added)} target(s) as pending: {', '.join(added) or '-'}")
     if added:

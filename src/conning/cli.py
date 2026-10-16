@@ -44,7 +44,7 @@ def _run(args: argparse.Namespace) -> int:
 def _add(a: argparse.Namespace) -> int:
     return admin.add(
         _core(), _io(), a.name, host=a.host, user=a.user, port=a.port, auth=a.auth, secret=a.secret, key=a.key,
-        os_name=a.os, mode=a.mode, tags=a.tag, retry=a.retry, like=a.like,
+        os_name=a.os, mode=a.mode, tags=a.tag, retry=a.retry, like=a.like, jump=a.jump,
     )  # fmt: skip
 
 
@@ -136,6 +136,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--user")
     sp.add_argument("--like", metavar="TARGET", help="same machine as TARGET (host, port, OS, tags); pick --user")
     sp.add_argument("--port", type=int, help="default 22")
+    sp.add_argument("--jump", metavar="TARGET", help="reach it through TARGET, a jump host (bastion)")
     sp.add_argument("--auth", choices=AUTHS)
     sp.add_argument("--secret", help="reference only: keychain:<service>/<account>, op://..., env:<NAME>")
     sp.add_argument("--key", help="private key file, for --auth key")

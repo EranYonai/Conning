@@ -588,6 +588,23 @@ def test_mcp_install_for_every_client(conn, tmp_path):
     assert "lab" in mcp_session(conn.env, work, (entry["command"], *entry.get("args", [])))
 
 
+# conn completion
+
+
+def test_tab_completes_from_the_target(conn, tmp_path):
+    assert "conn __complete" in conn("completion", "bash")
+    conn.env["SHELL"] = "/bin/bash"
+    assert "added to" in conn("completion", "install") and "already on" in conn("completion", "install")
+    assert 'eval "$(conn completion bash)"' in (conn.home / "home" / ".bashrc").read_text()
+    history = tmp_path / "history"
+    history.write_text("systemctl restart nginx\nmysql --password=x\n")
+    assert "sha256" in conn("transfer", f"local:{history}", "free:.bash_history")
+    assert conn("__complete", "run", "f").split() == ["free"]
+    assert conn("__complete", "run", "free", "systemctl", "").split()[0] == "restart"
+    assert "--password=x" not in conn("__complete", "run", "free", "mysql", "")
+    assert f"{REMOTE}/" in conn("__complete", "run", "free", "ls", REMOTE).split()
+
+
 # conn doctor / help / --version
 
 

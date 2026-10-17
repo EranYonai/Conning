@@ -7,7 +7,7 @@ import argparse
 import os
 import sys
 
-from conning import __version__, admin, doctor, install, watch
+from conning import __version__, admin, complete, doctor, install, watch
 from conning.output import DEFAULT_MAX_BYTES, MAX_BYTES_CEILING
 from conning.secrets import SecretError
 from conning.ssh import SSHError
@@ -82,6 +82,9 @@ HANDLERS = {
     "watch": _watch,
     "doctor": lambda a: doctor.doctor(_io()),
     "mcp": _mcp,
+    "completion": lambda a: (
+        complete.install() if a.shell == "install" else print(complete.SHELLS[a.shell], end="") or 0
+    ),
     "help": lambda a: print(help_markdown() if a.markdown else build_parser().format_help()) or 0,
 }
 
@@ -179,6 +182,9 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("client", choices=list(install.PLANNERS))
     sp.add_argument("--dry-run", action="store_true", help="show what would change")
 
+    sp = cmd("completion", "Tab completion that reads the target; conn completion install turns it on in your shell.")
+    sp.add_argument("shell", choices=[*complete.SHELLS, "install"], help="install: add it to your shell's rc file")
+
     sp = cmd("help", "Show this help; --markdown prints the block cached in README.md.")
     sp.add_argument("--markdown", action="store_true")
     return p
@@ -247,8 +253,11 @@ def _split_remote_command(argv: list[str]) -> tuple[list[str], list[str] | None]
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv[:1] == ["__complete"]:  # called by the completion script on every Tab; not in help
+        return complete.main(argv[1:])
     parser = build_parser()
-    argv, rest = _split_remote_command(list(sys.argv[1:] if argv is None else argv))
+    argv, rest = _split_remote_command(argv)
     args = parser.parse_args(argv)
     if rest is not None:
         if getattr(args, "command", None) != "run":

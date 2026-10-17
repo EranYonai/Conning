@@ -8,7 +8,7 @@ import os
 import shutil
 from pathlib import Path
 
-from conning import __version__, audit, paths, secrets, ssh
+from conning import __version__, audit, complete, paths, secrets, ssh
 from conning.admin import IO
 from conning.state import problems
 from conning.targets import TargetFileError, load_targets
@@ -62,6 +62,10 @@ def doctor(io: IO) -> int:
             report("warn", "SSH connection reuse is off here (no short private socket folder); each call reconnects")
     except ssh.SSHError as e:
         report("warn", f"SSH connection reuse is off: {e}")
+
+    hint = None if secrets.in_container() else complete.setup_hint()
+    if hint:
+        report("tip", hint)
 
     try:
         targets = load_targets(paths.targets_file())

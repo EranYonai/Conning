@@ -15,27 +15,56 @@
       "identifier": "conning",
       "version": "0.5.1",
       "runtimeHint": "uvx",
-      "transport": { "type": "stdio" },
-      "packageArguments": [{ "type": "positional", "value": "mcp" }]
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ]
     },
     {
       "registryType": "oci",
       "identifier": "ghcr.io/eranyonai/conning:0.5.1",
-      "transport": { "type": "stdio" },
+      "transport": {
+        "type": "stdio"
+      },
       "runtimeArguments": [
-        { "type": "named", "name": "--network", "value": "host" },
+        {
+          "type": "named",
+          "name": "--network",
+          "value": "host"
+        },
         {
           "type": "named",
           "name": "--volume",
           "value": "{conning_home}:/conning",
           "variables": {
             "conning_home": {
-              "description": "Conning's config folder on your machine: targets, pinned host keys, approvals",
+              "description": "Absolute path of Conning's config folder on your machine (usually ~/.config/conning, expanded)",
               "format": "filepath",
-              "default": "~/.config/conning",
               "isRequired": true
             }
           }
+        },
+        {
+          "type": "named",
+          "name": "--volume",
+          "value": "{ssh_auth_sock}:/ssh-agent",
+          "variables": {
+            "ssh_auth_sock": {
+              "description": "Your ssh-agent socket ($SSH_AUTH_SOCK; /run/host-services/ssh-auth.sock on Docker Desktop for Mac)",
+              "format": "filepath",
+              "isRequired": true
+            }
+          }
+        },
+        {
+          "type": "named",
+          "name": "--env",
+          "value": "SSH_AUTH_SOCK=/ssh-agent"
         }
       ]
     }

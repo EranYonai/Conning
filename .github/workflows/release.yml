@@ -89,4 +89,5 @@ jobs:
             server.json > server.tmp && mv server.tmp server.json
       - run: curl -sSL https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1/mcp-publisher_linux_amd64.tar.gz | tar xz mcp-publisher
       - run: ./mcp-publisher login github-oidc
-      - run: ./mcp-publisher publish
+      # PyPI can take a minute to show a new version, and the registry checks it there.
+      - run: for i in 1 2 3 4 5; do ./mcp-publisher publish && exit 0; sleep 30; done; exit 1

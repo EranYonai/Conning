@@ -300,6 +300,7 @@ def tools(monkeypatch):
     found = {"ssh", "scp", "ssh-keyscan", "op"}
     monkeypatch.setattr(doctor.shutil, "which", lambda name: name if name in found else None)
     monkeypatch.setattr(doctor.ssh, "control_dir", lambda: paths.state_dir())
+    monkeypatch.setattr(doctor.complete, "setup_hint", lambda: None)
     return found
 
 
@@ -307,6 +308,12 @@ def test_doctor_with_no_targets(home, tools):
     io = FakeIO()
     assert doctor.doctor(io) == 0  # a warning, not a failure
     assert io.said[0].startswith("ok   conning ") and "warn no targets in" in io.text
+
+
+def test_doctor_tips_tab_completion(home, tools, monkeypatch):
+    monkeypatch.setattr(doctor.complete, "setup_hint", lambda: "Tab completion is off; run: conn completion install")
+    io = FakeIO()
+    assert doctor.doctor(io) == 0 and "tip  Tab completion is off" in io.text
 
 
 def test_doctor_healthy_setup(home, tools, monkeypatch):

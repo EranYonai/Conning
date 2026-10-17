@@ -75,9 +75,18 @@ def test_auto_runs_anything_without_asking(core):
 def test_run_returns_exit_code_first_and_output(core):
     shell_lab()
     out = core.run("lab", argv=["sh", "-c", "echo hello; exit 3"])
-    header, body = out.split("\n", 1)
-    assert header.startswith("exit=3 dur=") and " out=o:" in header
-    assert body == "hello"
+    assert out == "exit=3\nhello"  # fast and complete: no duration, no handle
+
+
+@needs_sh
+def test_the_header_names_the_handle_only_when_output_is_hidden(core):
+    shell_lab()
+    cut = core.run("lab", cmd="seq 1 500").splitlines()[0]
+    assert cut.startswith("exit=0 out=o:") and "(500 lines" in cut
+    grepped = core.run("lab", cmd="seq 1 20", grep="^1$")
+    assert grepped.startswith("exit=0 out=o:") and grepped.endswith("\n1")
+    slow = core.run("lab", cmd="sleep 1.1; echo done")
+    assert slow.startswith("exit=0 dur=1.") and slow.endswith("\ndone")
 
 
 @needs_sh

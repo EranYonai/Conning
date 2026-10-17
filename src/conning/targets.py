@@ -41,6 +41,7 @@ class Target:
     inject: dict[str, str] = field(default_factory=dict)
     status: str = "active"
     safe: bool = True  # the built-in read-only commands run without asking (D39)
+    history: bool = True  # Tab completion reads the target's shell history (D53)
 
 
 KEYS = {f.name for f in fields(Target)} - {"name"}
@@ -107,8 +108,9 @@ def _parse(name: str, table: object, path: Path) -> Target:
     jump = table.get("jump")
     if jump is not None and (not isinstance(jump, str) or not NAME_RE.match(jump)):
         raise TargetFileError(f"{where}: 'jump' must be the name of another target")
-    if not isinstance(table.get("safe", True), bool):
-        raise TargetFileError(f"{where}: 'safe' must be true or false")
+    for flag in ("safe", "history"):
+        if not isinstance(table.get(flag, True), bool):
+            raise TargetFileError(f"{where}: '{flag}' must be true or false")
     inject = table.get("inject", {})
     if not isinstance(inject, dict) or not all(isinstance(v, str) for v in inject.values()):
         raise TargetFileError(f"{where}: 'inject' must map env names to secret references")
@@ -130,6 +132,7 @@ def _parse(name: str, table: object, path: Path) -> Target:
         inject=dict(inject),
         status=table.get("status", "active"),
         safe=table.get("safe", True),
+        history=table.get("history", True),
     )
 
 
@@ -195,7 +198,7 @@ def dump_targets(targets: dict[str, Target]) -> str:
     out = ["# Conning targets. Safe to read: this file holds no secrets, only references to them.\n"]
     for t in targets.values():
         out.append(f"[{t.name}]")
-        for key in "host port user jump auth secret key hostkey os shell mode status safe".split():
+        for key in "host port user jump auth secret key hostkey os shell mode status safe history".split():
             value = getattr(t, key)
             if value is not None and (key in ("host", "user") or value != getattr(defaults, key)):
                 out.append(f"{key} = {_toml_value(value)}")

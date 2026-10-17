@@ -38,6 +38,10 @@ uv tool install conning        # or: pipx install conning
 conn mcp install claude        # or codex, cursor, opencode, pi: adds the server and denies raw ssh/scp
 ```
 
+For Tab completion that reads the target (its files, commands and shell history), run
+`conn completion install` once; it adds one line to your bash, zsh or fish rc file, and `conn doctor`
+reminds you if it's missing. Set `history = false` on a target to keep its shell history out (D53).
+
 The MCP server needs no install at all:
 
 ```sh
@@ -136,6 +140,9 @@ conn doctor
 
 conn mcp [--approve-in-client | --no-approve-in-client] <serve|install> ...
     Run the MCP server on stdio, or install it into an agent client.
+
+conn completion {bash,zsh,fish,install}
+    Tab completion that reads the target; conn completion install turns it on in your shell.
 
 conn help [--markdown]
     Show this help; --markdown prints the block cached in README.md.

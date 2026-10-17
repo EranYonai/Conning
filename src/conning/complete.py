@@ -35,6 +35,7 @@ complete -F _conn conn
     compadd -- ${c:#*/}
     compadd -S '' -- ${(M)c:#*/}
 }
+(( $+functions[compdef] )) || { autoload -Uz compinit && compinit; }  # works before or without a framework
 compdef _conn conn
 """,
     "fish": "complete -c conn -f -a '(conn __complete (commandline -opc)[2..-1] (commandline -ct) 2>/dev/null)'\n",

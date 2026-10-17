@@ -108,7 +108,7 @@ TARGET_VERBS = ("add", "import", "test", "mode", "rename", "rm")
 
 
 def build_parser() -> Parser:
-    p = Parser(prog="conn", description="Conning: a control room for your agent's test machines.")
+    p = Parser(prog="conn", description="Conning: a light, local SSH controller for humans and agents.")
     p.add_argument("--version", action="version", version=f"conning {__version__}")
     sub = p.add_subparsers(dest="command", metavar="<command>", parser_class=argparse.ArgumentParser)
     p.sections = {}

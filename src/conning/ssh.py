@@ -294,7 +294,7 @@ def pin_host_keys(name: str, keys: list[tuple[str, str, str]]) -> None:
 
 
 def rename_host_keys(old: str, new: str) -> None:
-    """Pin the keys pinned for `old` under `new` instead (`conn rename`)."""
+    """Pin the keys pinned for `old` under `new` instead (`conn targets rename`)."""
     known_hosts = paths.config_dir() / "known_hosts"
     if not known_hosts.exists():
         return

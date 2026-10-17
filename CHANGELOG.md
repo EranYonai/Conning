@@ -7,8 +7,8 @@
   `rm`, the `ls` alias and `add --retry` are gone; `conn approve <target>` probes a target again.
 - `conn targets mode <target> [ask|auto]` shows or sets a target's mode. Turning `auto` on needs you at
   a terminal and a confirm; going back to `ask` works from anywhere. `conn mcp install` denies agents
-  `conn targets mode` and `conn targets rename`.
-- `conn -h` lists the commands in sections: agent commands, targets, trust (human only), this machine.
+  `conn targets mode` and `conn targets rename`; run it again to refresh the rules of an earlier install.
+- `conn -h` lists the commands in sections: agent commands, targets, trust, this machine.
 
 ## 0.6.0 (2026-10-17)
 

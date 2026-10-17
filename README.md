@@ -122,7 +122,7 @@ conn targets test name
     Probe a target: reachability, OS, shell, pinned host key.
 
 conn targets mode target [{ask,auto}]
-    Show or set the mode: ask, or auto (human only: anything runs without asking).
+    Show or set ask or auto; auto runs anything without asking and needs a human.
 
 conn targets rename old new
     Human only: rename a target; its host keys, password and pending work follow.
@@ -130,13 +130,13 @@ conn targets rename old new
 conn targets rm name
     Remove a target and its pinned host key.
 
-# Trust (human only)
+# Trust
 
 conn approve [--always] what
-    Make a pending target live (or probe a live one again), or allow a pending command a:<id>.
+    Human only: make a target live, or allow a pending command a:<id>.
 
 conn allow target [words ...]
-    Let a command run without asking (no words: list the rules).
+    Human only: let a command run without asking (no words: list the rules).
 
 conn deny target words [words ...]
     Remove an allow rule, so the command asks again (no terminal needed).

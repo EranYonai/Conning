@@ -179,7 +179,7 @@ def build_parser() -> Parser:
     sp = cmd("import", "Import hosts from ~/.ssh/config as pending targets (unsafe options dropped).", verbs)
     sp.add_argument("--match", default="*")
     cmd("test", "Probe a target: reachability, OS, shell, pinned host key.", verbs).add_argument("name")
-    sp = cmd("mode", "Show or set the mode: ask, or auto (human only: anything runs without asking).", verbs)
+    sp = cmd("mode", "Show or set ask or auto; auto runs anything without asking and needs a human.", verbs)
     sp.add_argument("target", help="a name, a comma list, or tag:<tag>")
     sp.add_argument("mode", nargs="?", choices=MODES)
     sp = cmd("rename", "Human only: rename a target; its host keys, password and pending work follow.", verbs)
@@ -187,11 +187,11 @@ def build_parser() -> Parser:
     sp.add_argument("new")
     cmd("rm", "Remove a target and its pinned host key.", verbs).add_argument("name")
 
-    section = "Trust (human only)"
-    sp = cmd("approve", "Make a pending target live (or probe a live one again), or allow a pending command a:<id>.")
+    section = "Trust"
+    sp = cmd("approve", "Human only: make a target live, or allow a pending command a:<id>.")
     sp.add_argument("what", help="<target> or a:<id>")
     sp.add_argument("--always", action="store_true", help="for a:<id>: remember the command's first two words")
-    sp = cmd("allow", "Let a command run without asking (no words: list the rules).")
+    sp = cmd("allow", "Human only: let a command run without asking (no words: list the rules).")
     sp.add_argument("target", help="a name, a comma list, or tag:<tag>")
     sp.add_argument("words", nargs="*", help="the command's leading words, e.g. systemctl status")
     sp = cmd("deny", "Remove an allow rule, so the command asks again (no terminal needed).")
@@ -290,7 +290,7 @@ def main(argv: list[str] | None = None) -> int:
     if argv[:1] == ["__complete"]:  # called by the completion script on every Tab; not in help
         return complete.main(argv[1:])
     parser = build_parser()
-    if argv[:1] == ["targets"] and not set(argv[1:2]) & {*TARGET_VERBS, "-h", "--help"}:
+    if argv[:1] == ["targets"] and not set(argv[1:2]) & {*TARGET_VERBS, "ls", "-h", "--help"}:
         argv.insert(1, "ls")  # `conn targets [filter] [--check]` lists
     argv, rest = _split_remote_command(argv)
     args = parser.parse_args(argv)

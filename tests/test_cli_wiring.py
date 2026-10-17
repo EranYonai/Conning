@@ -175,8 +175,9 @@ def test_targets_lists_without_a_verb_and_manages_with_one(fake, monkeypatch, ca
     monkeypatch.setattr(admin, "set_mode", lambda *a: seen.append(a) or 0)
     assert cli.main(["targets", "mode", "lab", "auto"]) == 0 and seen == [(fake.io, "lab", "auto")]
     assert cli.main(["targets", "tag:x", "--check"]) == 0
+    assert cli.main(["targets", "ls", "lab"]) == 0
     with pytest.raises(SystemExit):
         cli.main(["targets", "-h"])
     assert "conn targets [filter] [--check]" in capsys.readouterr().out
     help = cli.build_parser().format_help()
-    assert "Trust (human only):\n  approve " in help and "  targets mode  " in help
+    assert "Trust:\n  approve " in help and "  targets mode  " in help

@@ -467,8 +467,8 @@ def rename(io: IO, old: str, new: str) -> int:
         io.say(f"error: {new} already exists")
         return 1
     t = replace(targets[old], name=new)
-    stored = t.secret == f"keychain:{secrets.KEYCHAIN_SERVICE}/{old}"  # the password `conn add` saved
-    if stored:  # moved, so a later `conn add <old>` can't overwrite the password this target uses
+    stored = t.secret == f"keychain:{secrets.KEYCHAIN_SERVICE}/{old}"  # the password `conn targets add` saved
+    if stored:  # moved, so a later `conn targets add <old>` can't overwrite the password this target uses
         try:
             t = replace(t, secret=secrets.move_in_keychain(t.secret, new))
         except Exception as e:  # noqa: BLE001 - every keyring backend fails differently

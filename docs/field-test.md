@@ -9,7 +9,7 @@ not pass or fail. A command that worked but took three tries is a finding.
 
 ```sh
 uv tool install conning            # the CLI on your machine; `conn --version` should say 0.6.0 or later
-conn add <name> --host <address> --user <user>    # each lab VM; it asks for the rest (--os windows)
+conn targets add <name> --host <address> --user <user>    # each lab VM; it asks for the rest (--os windows)
 conn approve <name>                # pins the host key
 conn doctor                        # every line ok, or a warn you understand
 ```

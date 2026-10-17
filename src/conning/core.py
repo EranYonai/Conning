@@ -106,7 +106,7 @@ class Core:
         except TargetFileError as e:
             return f"error: {e}"
         if not everything:
-            return f"no targets in {paths.targets_file()} (add one with: conn add <name>)"
+            return f"no targets in {paths.targets_file()} (add one with: conn targets add <name>)"
         chosen = select(everything, filter)
         if not chosen:
             return f"no target matches {filter!r} (conn targets lists all)"

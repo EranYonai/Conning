@@ -18,7 +18,7 @@ from pathlib import Path
 from conning import paths
 
 DENIED_PROGRAMS = ("ssh", "scp", "sftp")
-HUMAN_ONLY = ("approve", "allow", "rename")  # conn commands that grant or move trust
+HUMAN_ONLY = ("approve", "allow", "targets rename", "targets mode")  # conn commands that grant or move trust
 
 
 @dataclass
@@ -109,7 +109,7 @@ def plan_codex(command: list[str]) -> Plan:
         plan.writes[config] = text.rstrip("\n") + ("\n" if text else "") + block
     rules = _codex_dir() / "rules" / "conning.rules"
     lines = ["# Written by `conn mcp install codex`: remote machines go through Conning's tools.\n"]
-    for pattern in [[p] for p in DENIED_PROGRAMS] + [["conn", c] for c in HUMAN_ONLY]:
+    for pattern in [[p] for p in DENIED_PROGRAMS] + [["conn", *c.split()] for c in HUMAN_ONLY]:
         lines.append(
             f'prefix_rule(pattern = {json.dumps(pattern)}, decision = "forbidden", '
             f'justification = "use Conning\'s tools for remote machines")\n'

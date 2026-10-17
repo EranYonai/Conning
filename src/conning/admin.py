@@ -1,7 +1,7 @@
 """The human side: adding, approving, testing and removing targets, approving commands.
 
 Anything that grants trust (going live, pinning a host key, approving a command) needs an
-interactive terminal. An agent calling `conn add` from its shell has no TTY, so its target is saved
+interactive terminal. An agent calling `conn targets add` from its shell has no TTY, so its target is saved
 as pending and does nothing until a human runs `conn approve <name>`.
 """
 
@@ -90,7 +90,6 @@ def add(
     os_name: str | None = None,
     mode: str = "ask",
     tags: list[str] | None = None,
-    retry: bool = False,
     like: str | None = None,
     jump: str | None = None,
 ) -> int:
@@ -120,14 +119,9 @@ def add(
     if jump is not None and (jump == name or jump not in targets):
         io.say(f"error: jump host {jump} is not a target; add it first")
         return 1
-    if name in targets and not retry:
-        io.say(f"error: {name} already exists (use --retry to probe it again, or conn rm {name})")
+    if name in targets:
+        io.say(f"error: {name} already exists (probe it again with conn approve {name}, or conn targets rm {name})")
         return 1
-    if retry:
-        if name not in targets:
-            io.say(f"error: no target {name} to retry")
-            return 1
-        return approve_target(core, io, name)
     if not io.tty and not (host and user):
         io.say("error: --host and --user are required when adding without a terminal")
         return 1
@@ -408,6 +402,36 @@ def deny(io: IO, selector: str, words: list[str]) -> int:
     return 0
 
 
+def set_mode(io: IO, selector: str, mode: str | None) -> int:
+    """Show targets' modes, or set one. Turning auto on needs a human; going back to ask needs no terminal."""
+    path = paths.targets_file()
+    targets = load_targets(path)
+    chosen = select(targets, selector)
+    if not chosen:
+        io.say(f"error: no target matches {selector!r}")
+        return 1
+    if mode is None:
+        for t in chosen:
+            io.say(f"{t.name}: mode={t.mode}")
+        return 0
+    names = [t.name for t in chosen if t.mode != mode]
+    if not names:
+        io.say(f"already mode={mode}")
+        return 0
+    if mode == "auto":
+        if (code := _need_tty(io, "turning on mode=auto")) is not None:
+            return code
+        if not _confirm(io, f"let the agent run anything on {', '.join(names)} without asking?"):
+            io.say("no change")
+            return 1
+    for name in names:
+        targets[name] = replace(targets[name], mode=mode)
+        audit.record("target", target=name, change="mode", mode=mode)
+    save_targets(path, targets)
+    io.say(f"mode={mode} on {', '.join(names)}")
+    return 0
+
+
 def remove(io: IO, name: str) -> int:
     path = paths.targets_file()
     targets = load_targets(path)
@@ -443,8 +467,8 @@ def rename(io: IO, old: str, new: str) -> int:
         io.say(f"error: {new} already exists")
         return 1
     t = replace(targets[old], name=new)
-    stored = t.secret == f"keychain:{secrets.KEYCHAIN_SERVICE}/{old}"  # the password `conn add` saved
-    if stored:  # moved, so a later `conn add <old>` can't overwrite the password this target uses
+    stored = t.secret == f"keychain:{secrets.KEYCHAIN_SERVICE}/{old}"  # the password `conn targets add` saved
+    if stored:  # moved, so a later `conn targets add <old>` can't overwrite the password this target uses
         try:
             t = replace(t, secret=secrets.move_in_keychain(t.secret, new))
         except Exception as e:  # noqa: BLE001 - every keyring backend fails differently

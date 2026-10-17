@@ -60,12 +60,12 @@ def test_admin_commands_reach_admin(fake, monkeypatch):
     seen = []
     for name in ("add", "approve", "remove", "rename", "test", "import_ssh_config"):
         monkeypatch.setattr(admin, name, lambda *a, _n=name, **k: seen.append((_n, a, k)) or 0)
-    assert cli.main(["add", "lab", "--host", "h", "--user", "u", "--tag", "x", "--os", "windows"]) == 0
+    assert cli.main(["targets", "add", "lab", "--host", "h", "--user", "u", "--tag", "x", "--os", "windows"]) == 0
     assert cli.main(["approve", "a:ab", "--always"]) == 0
-    assert cli.main(["rm", "lab"]) == 0
-    assert cli.main(["rename", "lab", "lab2"]) == 0
-    assert cli.main(["test", "lab"]) == 0
-    assert cli.main(["import", "--match", "lab-*"]) == 0
+    assert cli.main(["targets", "rm", "lab"]) == 0
+    assert cli.main(["targets", "rename", "lab", "lab2"]) == 0
+    assert cli.main(["targets", "test", "lab"]) == 0
+    assert cli.main(["targets", "import", "--match", "lab-*"]) == 0
     assert [s[0] for s in seen] == ["add", "approve", "remove", "rename", "test", "import_ssh_config"]
     assert seen[0][2]["tags"] == ["x"] and seen[0][2]["os_name"] == "windows"
     assert seen[1][2] == {"always": True} and seen[3][1] == (fake.io, "lab", "lab2")
@@ -77,7 +77,7 @@ def test_help(capsys):
     assert cli.main(["help"]) == 0
     assert "usage: conn" in capsys.readouterr().out
     assert cli.main(["help", "--markdown"]) == 0
-    assert capsys.readouterr().out.startswith("```\nconn targets")
+    assert capsys.readouterr().out.startswith("```\n# Agent commands")
 
 
 def test_help_markdown_restores_columns(monkeypatch):
@@ -156,7 +156,7 @@ def test_file_problems_are_one_error_line(fake, monkeypatch, capsys):
         raise PermissionError(13, "Permission denied", "/cfg/known_hosts")
 
     monkeypatch.setattr(admin, "remove", denied)
-    assert cli.main(["rm", "lab"]) == 1
+    assert cli.main(["targets", "rm", "lab"]) == 1
     assert capsys.readouterr().out == "error: [Errno 13] Permission denied: '/cfg/known_hosts'\n"
 
 
@@ -168,3 +168,16 @@ def test_mcp_tools_turn_file_problems_into_errors():
     srv = server.build_server(Broken())
     text = asyncio.run(srv.call_tool("targets", {})).content[0].text
     assert text == "error: [Errno 13] Permission denied: '/cfg'"
+
+
+def test_targets_lists_without_a_verb_and_manages_with_one(fake, monkeypatch, capsys):
+    seen = []
+    monkeypatch.setattr(admin, "set_mode", lambda *a: seen.append(a) or 0)
+    assert cli.main(["targets", "mode", "lab", "auto"]) == 0 and seen == [(fake.io, "lab", "auto")]
+    assert cli.main(["targets", "tag:x", "--check"]) == 0
+    assert cli.main(["targets", "ls", "lab"]) == 0
+    with pytest.raises(SystemExit):
+        cli.main(["targets", "-h"])
+    assert "conn targets [filter] [--check]" in capsys.readouterr().out
+    help = cli.build_parser().format_help()
+    assert "Trust:\n  approve " in help and "  targets mode  " in help

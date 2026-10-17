@@ -1,3 +1,3 @@
-"""Conning: a control room for your agent's test machines."""
+"""Conning: a light, local SSH controller for humans and agents."""
 
-__version__ = "0.6.0"
+__version__ = "0.6.1"

@@ -137,8 +137,8 @@ def _parse(name: str, table: object, path: Path) -> Target:
 
 
 def _add_command(name: str, table: dict) -> str:
-    """The `conn add` line that recreates an entry; a lease becomes auto, anything else ask."""
-    argv = ["conn", "add", name, "--host", table["host"], "--user", table["user"]]
+    """The `conn targets add` line that recreates an entry; a lease becomes auto, anything else ask."""
+    argv = ["conn", "targets", "add", name, "--host", table["host"], "--user", table["user"]]
     for key in ("port", "jump", "auth", "secret", "key", "os"):
         if key in table:
             argv += [f"--{key}", str(table[key])]

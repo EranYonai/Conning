@@ -49,7 +49,7 @@ def test_cli_passes_like(monkeypatch):
     monkeypatch.setattr(cli, "_core", lambda: None)
     monkeypatch.setattr(cli, "_io", lambda: None)
     monkeypatch.setattr(admin, "add", lambda *a, **k: seen.append(k) or 0)
-    assert cli.main(["add", "lab-u", "--like", "lab", "--user", "u"]) == 0
+    assert cli.main(["targets", "add", "lab-u", "--like", "lab", "--user", "u"]) == 0
     assert seen[0]["like"] == "lab" and seen[0]["user"] == "u"
 
 

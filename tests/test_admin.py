@@ -75,9 +75,7 @@ def test_add_validations(core):
     assert admin.add(core, io, "lab", host="h", user="u", auth="key") == 1 and "needs --key" in io.text
     write_targets(target())
     io = FakeIO(tty=False)
-    assert admin.add(core, io, "lab", host="h", user="u") == 1 and "already exists" in io.text
-    io = FakeIO(tty=False)
-    assert admin.add(core, io, "other", retry=True) == 1 and "no target other" in io.text
+    assert admin.add(core, io, "lab", host="h", user="u") == 1 and "conn approve lab" in io.text
 
 
 def test_add_reports_a_broken_target_file(core):
@@ -122,18 +120,18 @@ def test_enroll_declined_or_failing(core, transport, keyscan, monkeypatch):
     keyscan["keys"] = []
     monkeypatch.setattr(ssh, "port_open", lambda h, p, timeout=3: True)
     io = FakeIO()
-    assert admin.add(core, io, "lab", retry=True) == 1 and "no host keys" in io.text
+    assert admin.approve_target(core, io, "lab") == 1 and "no host keys" in io.text
     monkeypatch.setattr(ssh, "port_open", lambda h, p, timeout=3: False)
     monkeypatch.setattr(ssh, "no_ssh_hint", lambda t: "windows hint")
     io = FakeIO()
-    assert admin.add(core, io, "lab", retry=True) == 1 and "windows hint" in io.text
+    assert admin.approve_target(core, io, "lab") == 1 and "windows hint" in io.text
 
     def boom(host, port):
         raise ssh.SSHError("ssh-keyscan not found")
 
     monkeypatch.setattr(ssh, "scan_host_keys", boom)
     io = FakeIO()
-    assert admin.add(core, io, "lab", retry=True) == 1 and "ssh-keyscan" in io.text
+    assert admin.approve_target(core, io, "lab") == 1 and "ssh-keyscan" in io.text
 
 
 def test_enroll_probe_failure_keeps_pending(core, transport, keyscan):
@@ -364,3 +362,25 @@ def test_approving_shows_the_result_and_the_agent_still_gets_it(core, home):
     assert admin.approve(core, io, f"a:{approval_id}") == 0
     assert "hello-from-lab" in io.text
     assert "hello-from-lab" in core.read(f"a:{approval_id}")
+
+
+def test_mode_shows_turns_auto_on_with_a_human_and_back_from_anywhere():
+    from conning import audit
+
+    write_targets(target(), target("lab2", tags=("x",)))
+    io = FakeIO(tty=False)
+    assert admin.set_mode(io, "lab", None) == 0 and io.text == "lab: mode=ask"
+    assert admin.set_mode(FakeIO(tty=False), "nope", "auto") == 1
+    io = FakeIO(tty=False)
+    assert admin.set_mode(io, "lab", "auto") == 1 and "needs a human" in io.text
+    io = FakeIO("n")
+    assert admin.set_mode(io, "lab", "auto") == 1 and "no change" in io.text and saved().mode == "ask"
+    io = FakeIO("y")
+    assert admin.set_mode(io, "lab,lab2", "auto") == 0 and "run anything on lab, lab2" in io.said[0]
+    assert saved().mode == "auto" and saved("lab2").mode == "auto"
+    io = FakeIO(tty=False)
+    assert admin.set_mode(io, "tag:x", "auto") == 0 and io.text == "already mode=auto"
+    io = FakeIO(tty=False)
+    assert admin.set_mode(io, "tag:x", "ask") == 0 and io.text == "mode=ask on lab2"
+    changes = [(e["target"], e["mode"]) for e in audit.read_from(0)[0] if e.get("change") == "mode"]
+    assert changes == [("lab", "auto"), ("lab2", "auto"), ("lab2", "ask")]

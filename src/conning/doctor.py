@@ -73,7 +73,7 @@ def doctor(io: IO) -> int:
         report("FAIL", str(e))
         return 1
     if not targets:
-        report("warn", f"no targets in {paths.targets_file()} (add one with: conn add <name>)")
+        report("warn", f"no targets in {paths.targets_file()} (add one with: conn targets add <name>)")
         return 1 if failed else 0
     report("ok", f"{len(targets)} target(s) in {paths.targets_file()}")
 

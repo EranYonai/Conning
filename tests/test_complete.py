@@ -22,13 +22,16 @@ def lab(home, transport, monkeypatch):
 
 
 def test_subcommands_and_target_names(lab):
-    assert complete.complete(["r"]) == ["run", "read", "rm", "rename"]
+    assert complete.complete(["r"]) == ["run", "read"]
+    assert complete.complete(["targets", "r"]) == ["rename", "rm"]
+    assert complete.complete(["targets", "l"]) == ["lab", "lab2"]
+    assert complete.complete(["targets", "mode", ""]) == ["lab", "lab2", "win"]
     assert "__complete" not in complete.complete([""])
     assert complete.complete(["run", "l"]) == ["lab", "lab2"]
     assert complete.complete(["run", "--wait", "5", "lab"]) == ["lab", "lab2"]
-    assert complete.complete(["test", ""]) == ["lab", "lab2", "win"]
-    assert complete.complete(["test", "-"]) == []
-    assert complete.complete(["rename", "lab", ""]) == []  # only the first word is a target
+    assert complete.complete(["targets", "test", ""]) == ["lab", "lab2", "win"]
+    assert complete.complete(["targets", "test", "-"]) == []
+    assert complete.complete(["targets", "rename", "lab", ""]) == []  # only the first word is a target
     assert complete.complete(["doctor", ""]) == []
 
 

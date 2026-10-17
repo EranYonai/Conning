@@ -165,8 +165,7 @@ def pending_id(out: str) -> str:
 def conn(tmp_path_factory):
     c = Conn(tmp_path_factory.mktemp("conning"))
     add_live(c, "lab", "--auth", "key", "--key", KEY)
-    add_live(c, "free", "--auth", "key", "--key", KEY)
-    assert "lease on free" in c.human("lease", "free", "--minutes", "30", answers="y\n")
+    add_live(c, "free", "--auth", "key", "--key", KEY, "--mode", "auto")
     assert c("run", "free", "mkdir", "-p", REMOTE).startswith("exit=0")
     return c
 
@@ -353,7 +352,7 @@ def test_import_keeps_proxyjump(tmp_path):
     assert "conning-e2e" in c("run", "behind", "whoami")
 
 
-# conn run / approve / allow / deny / lease
+# conn run / approve / allow / deny, modes
 
 
 def test_read_only_commands_run_and_others_wait_for_a_human(conn):
@@ -388,13 +387,6 @@ def test_run_options(conn):
     assert out.splitlines()[1:] == [str(n) for n in range(990, 1000)]
 
 
-def test_observe_mode_refuses_what_is_not_read_only(tmp_path):
-    c = Conn(tmp_path)
-    add_live(c, "obs", "--auth", "key", "--key", KEY, "--mode", "observe")
-    assert c("run", "obs", "touch", "/tmp/x").startswith("refused  obs  (mode=observe")
-    assert c("run", "obs", "uname").startswith("exit=0")
-
-
 def test_allow_and_deny_rules(conn):
     assert "status=pending_approval" in conn("run", "lab", "date")
     conn.human("allow", "lab", "date", answers="y\n")
@@ -405,14 +397,17 @@ def test_allow_and_deny_rules(conn):
     assert "needs a human" in conn("allow", "lab", "reboot")
 
 
-def test_a_lease_lets_anything_run_for_a_while(tmp_path):
+def test_auto_mode_runs_anything_and_old_modes_say_how_to_recreate(tmp_path):
     c = Conn(tmp_path)
     add_live(c, "box", "--auth", "key", "--key", KEY)
     assert "status=pending_approval" in c("run", "box", "sh", "-c", "echo hi; echo there")
-    assert "needs a human" in c("lease", "box")
-    assert "lease on box for 5 minutes" in c.human("lease", "box", "--minutes", "5", answers="y\n")
+    toml = tmp_path / "targets.toml"
+    toml.write_text(toml.read_text() + 'mode = "auto"\n')
     assert c("run", "box", "sh", "-c", "echo hi; echo there").splitlines()[1:] == ["hi", "there"]
-    assert "warn box has a lease" in c("doctor")
+    assert "warn box has mode=auto" in c("doctor")
+    toml.write_text(toml.read_text().replace('mode = "auto"', 'mode = "lease"'))
+    out = c("targets")
+    assert "mode 'lease' is not supported" in out and "conn add box --host 127.0.0.1" in out and "--mode auto" in out
 
 
 # conn read
@@ -470,8 +465,7 @@ def test_directory_transfers(conn, tmp_path):
 
 def test_injected_secrets_never_reach_the_output(tmp_path):
     c = Conn(tmp_path)
-    add_live(c, "inj", "--auth", "key", "--key", KEY)
-    c.human("lease", "inj", "--minutes", "5", answers="y\n")
+    add_live(c, "inj", "--auth", "key", "--key", KEY, "--mode", "auto")
     toml = tmp_path / "targets.toml"
     toml.write_text(toml.read_text() + 'inject = { DEMO_TOKEN = "env:DEMO_TOKEN" }\n')
     c.env["DEMO_TOKEN"] = "s3cret-demo-token"
@@ -630,4 +624,4 @@ def test_every_command_in_help_is_tested_here(conn):
     commands = set(re.findall(r"^conn (\w+)", conn("help", "--markdown"), re.M))
     source = Path(__file__).read_text()
     untested = sorted(c for c in commands if f'"{c}"' not in source)
-    assert len(commands) >= 17 and not untested, f"add an e2e test for: {untested}"
+    assert len(commands) >= 16 and not untested, f"add an e2e test for: {untested}"

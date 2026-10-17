@@ -7,11 +7,12 @@ not a warning, so a typo can never silently widen what the agent may do.
 import json
 import os
 import re
+import shlex
 import tomllib
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 
-MODES = ("observe", "ask", "lease")
+MODES = ("ask", "auto")
 AUTHS = ("ssh-agent", "key", "password")
 STATUSES = ("active", "pending")
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$")
@@ -90,7 +91,11 @@ def _parse(name: str, table: object, path: Path) -> Target:
     for required in ("host", "user"):
         if not isinstance(table.get(required), str) or not table[required]:
             raise TargetFileError(f"{where}: '{required}' is required")
-    _check_choice(where, table, "mode", MODES)
+    if table.get("mode", "ask") not in MODES:  # observe and lease are gone (D52)
+        raise TargetFileError(
+            f"{where}: mode {table['mode']!r} is not supported, only ask or auto. Delete this entry "
+            f"and recreate the target: {_add_command(name, table)}"
+        )
     _check_choice(where, table, "auth", AUTHS)
     _check_choice(where, table, "status", STATUSES)
     if table.get("auth") == "password" and not table.get("secret"):
@@ -129,6 +134,19 @@ def _parse(name: str, table: object, path: Path) -> Target:
         safe=table.get("safe", True),
         history=table.get("history", True),
     )
+
+
+def _add_command(name: str, table: dict) -> str:
+    """The `conn add` line that recreates an entry; a lease becomes auto, anything else ask."""
+    argv = ["conn", "add", name, "--host", table["host"], "--user", table["user"]]
+    for key in ("port", "jump", "auth", "secret", "key", "os"):
+        if key in table:
+            argv += [f"--{key}", str(table[key])]
+    argv += ["--mode", "auto" if table["mode"] == "lease" else "ask"]
+    for tag in table.get("tags", ()):
+        argv += ["--tag", str(tag)]
+    by_hand = [key for key in ("allow", "inject", "safe", "shell") if key in table]
+    return shlex.join(argv) + (f", then copy back its {', '.join(by_hand)} by hand" if by_hand else "")
 
 
 def _check_choice(where: str, table: dict, key: str, choices: tuple[str, ...]) -> None:

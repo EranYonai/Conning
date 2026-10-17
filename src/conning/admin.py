@@ -1,6 +1,6 @@
-"""The human side: adding, approving, testing and removing targets, approving commands, leases.
+"""The human side: adding, approving, testing and removing targets, approving commands.
 
-Anything that grants trust (going live, pinning a host key, approving a command, a lease) needs an
+Anything that grants trust (going live, pinning a host key, approving a command) needs an
 interactive terminal. An agent calling `conn add` from its shell has no TTY, so its target is saved
 as pending and does nothing until a human runs `conn approve <name>`.
 """
@@ -18,7 +18,7 @@ from conning import audit, paths, secrets, ssh
 from conning.core import PENDING, Core
 from conning.policy import SAFE, WRAPPERS, policy_argv, program, remembered_rule
 from conning.secrets import SecretError, store_in_keychain
-from conning.state import Approval, Job, grant_lease, rename_target, set_problem
+from conning.state import Approval, Job, rename_target, set_problem
 from conning.targets import (
     AUTHS,
     MODES,
@@ -31,7 +31,6 @@ from conning.targets import (
     select,
 )
 
-MAX_LEASE_MINUTES = 60
 APPROVE_WAIT = 10  # seconds `conn approve a:<id>` waits for the command before handing back its job id
 
 
@@ -192,10 +191,12 @@ def _enroll(core: Core, io: IO, t: Target) -> int:
             return _stays_pending(io, t, ssh.no_ssh_hint(t), "no SSH server answered")
         return _stays_pending(io, t, f"{t.name}: no host keys offered", "no host keys offered")
     via = f"  via {t.jump}" if t.jump else ""
-    io.say(f"{t.name}: {t.user}@{t.host}:{t.port}{via}  auth={t.auth}" + (f"  secret={t.secret}" if t.secret else ""))
+    secret = f"  secret={t.secret}" if t.secret else ""
+    io.say(f"{t.name}: {t.user}@{t.host}:{t.port}{via}  auth={t.auth}{secret}  mode={t.mode}")
     for key_type, fp, _ in keys:
         io.say(f"  host key {key_type:<20} {fp}")
-    if not _confirm(io, "pin these host keys and make the target live?"):
+    auto = " in mode=auto, where the agent runs anything without asking" if t.mode == "auto" else ""
+    if not _confirm(io, f"pin these host keys and make the target live{auto}?"):
         return _stays_pending(io, t, "not pinned; the target stays pending", "host key not confirmed")
     ssh.pin_host_keys(t.name, keys)
     t = replace(t, hostkey=keys[0][1], status="active")
@@ -427,7 +428,7 @@ def remove(io: IO, name: str) -> int:
 
 def rename(io: IO, old: str, new: str) -> int:
     """Human only: give a target a new name, and carry everything kept under the old one along: its
-    pinned host keys, the password Conning stored for it, a lease, pending approvals and running jobs."""
+    pinned host keys, the password Conning stored for it, pending approvals and running jobs."""
     if (code := _need_tty(io, "renaming a target")) is not None:
         return code
     path = paths.targets_file()
@@ -475,24 +476,6 @@ def test(core: Core, io: IO, name: str) -> int:
         io.say(f"{name}: {problem}")
         return 1
     io.say(f"{name}: ok, {os_name} {shell}, host key pinned")
-    return 0
-
-
-def lease(io: IO, name: str, minutes: int) -> int:
-    if (code := _need_tty(io, "granting a lease")) is not None:
-        return code
-    if name not in load_targets(paths.targets_file()):
-        io.say(f"error: no target {name}")
-        return 1
-    if not 1 <= minutes <= MAX_LEASE_MINUTES:
-        io.say(f"error: a lease lasts 1 to {MAX_LEASE_MINUTES} minutes")
-        return 1
-    if not _confirm(io, f"give the agent a full shell on {name} for {minutes} minutes?"):
-        io.say("no lease granted")
-        return 1
-    grant_lease(name, minutes)
-    audit.record("lease", target=name, minutes=minutes)
-    io.say(f"lease on {name} for {minutes} minutes")
     return 0
 
 

@@ -4,7 +4,7 @@ from dataclasses import replace
 import pytest
 from conftest import needs_sh, target, write_targets
 
-from conning.state import Approval, Job, grant_lease
+from conning.state import Approval, Job
 
 ALLOW_ECHO = (("echo",), ("sleep",), ("printf",), ("cat",))
 
@@ -15,9 +15,8 @@ def lab(**kw):
 
 
 def shell_lab(*others):
-    """`sh -c` is a wrapper and always asks, so tests that need a shell give lab a lease."""
-    write_targets(lab(), *others)
-    grant_lease("lab", 5)
+    """`sh -c` is a wrapper and always asks, so tests that need a shell put lab in mode=auto."""
+    write_targets(lab(mode="auto"), *others)
 
 
 # --- argument and target checks ---------------------------------------------------------------
@@ -49,11 +48,6 @@ def test_pending_target_is_blocked(core):
     assert core.run("lab", argv=["echo", "hi"]).startswith("blocked  lab  (target is pending")
 
 
-def test_observe_refuses_commands_off_the_allowlist(core):
-    write_targets(lab(mode="observe"))
-    assert core.run("lab", argv=["rm", "-rf", "/"]).startswith("refused  lab")
-
-
 def test_ask_creates_one_approval(core, transport):
     write_targets(lab())
     out = core.run("lab", argv=["systemctl", "stop", "x"])
@@ -69,10 +63,9 @@ def test_shell_syntax_always_asks(core):
 
 
 @needs_sh
-def test_lease_bypasses_the_allowlist(core):
-    write_targets(lab(allow=()))
-    grant_lease("lab", 5)
-    assert core.run("lab", argv=["uname"]).startswith("exit=0")
+def test_auto_runs_anything_without_asking(core):
+    write_targets(lab(allow=(), mode="auto"))
+    assert core.run("lab", cmd="uname | cat").startswith("exit=0")
 
 
 # --- running jobs -----------------------------------------------------------------------------
@@ -328,13 +321,12 @@ def test_upload_and_download_are_verified(core, transport, tmp_path):
 
 
 def test_transfer_argument_errors(core, tmp_path):
-    write_targets(lab(), replace(lab(), name="pend", status="pending"), replace(lab(), name="obs", mode="observe"))
+    write_targets(lab(), replace(lab(), name="pend", status="pending"))
     assert core.transfer("a", "b").startswith("error: use local:")
     assert core.transfer("local:/a", "local:/b").startswith("error: exactly one side")
-    assert core.transfer("lab:/a", "obs:/b").startswith("error: exactly one side")
+    assert core.transfer("lab:/a", "pend:/b").startswith("error: exactly one side")
     assert core.transfer("local:/a", "nope:/b").startswith("error: unknown target nope")
     assert core.transfer("local:/a", "pend:/b").startswith("error: pend is pending")
-    assert core.transfer("local:/a", "obs:/b").startswith("refused  obs")
     assert core.transfer(f"local:{tmp_path / 'missing'}", "lab:/b").startswith("error: local:")
 
 

@@ -7,7 +7,7 @@ from conftest import target, write_targets
 from test_admin import KEYS, FakeIO
 
 from conning import admin, audit, paths, secrets, ssh
-from conning.state import Approval, Job, grant_lease, lease_until, problems, set_problem
+from conning.state import Approval, Job, problems, set_problem
 from conning.targets import load_targets
 
 
@@ -32,11 +32,10 @@ def keyring(monkeypatch):
     return ring
 
 
-def test_rename_carries_keys_rules_lease_and_pending_work(home):
+def test_rename_carries_keys_rules_and_pending_work(home):
     write_targets(target("first"), target("lab", allow=(("make",),), tags=("x",)), target("last"))
     ssh.pin_host_keys("lab", KEYS)
     ssh.pin_host_keys("last", KEYS)
-    grant_lease("lab", 5)
     set_problem("lab", "no SSH server answered")
     waiting = Approval(id="a1", targets=["lab", "last"], command=None, argv=["touch", "x"], cwd=None, timeout=60)
     answered = Approval(id="a2", targets=["lab"], command=None, argv=["ls"], cwd=None, timeout=60, status="approved")
@@ -56,7 +55,6 @@ def test_rename_carries_keys_rules_lease_and_pending_work(home):
     assert targets["lab-new"].name == "lab-new" and targets["lab-new"].allow == (("make",),)
     known = (paths.config_dir() / "known_hosts").read_text()
     assert "conning-lab-new ssh-ed25519" in known and "conning-lab " not in known and "conning-last " in known
-    assert lease_until("lab-new") and lease_until("lab") is None
     assert problems() == {"lab-new": "no SSH server answered"}
     assert Approval.load("a1").targets == ["lab-new", "last"] and Approval.load("a2").targets == ["lab"]
     assert Job.load("j1").target == "lab-new" and Job.load("j2").target == "lab"  # history keeps its name

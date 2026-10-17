@@ -6,7 +6,7 @@
 After `conn run <target>`, candidates come from the target itself in one ssh call on its shared
 connection: the next word of matching commands from Conning's own log and the target's shell history,
 then command names (first word) or file names. Only live targets that run the read-only list (or have
-a lease) are asked, because a listing is what `ls` shows. Completion never asks for approval and never
+`auto` mode) are asked, because a listing is what `ls` shows. Completion never asks for approval and never
 writes to the audit log. History lines that look like they carry a secret are dropped; that is a
 heuristic, not a guarantee, so a target can turn history off with `history = false`.
 """
@@ -15,7 +15,6 @@ import re
 import shlex
 
 from conning import audit, paths
-from conning.state import lease_until
 from conning.targets import load_targets
 
 SHELLS = {
@@ -40,7 +39,7 @@ compdef _conn conn
 """,
     "fish": "complete -c conn -f -a '(conn __complete (commandline -opc)[2..-1] (commandline -ct) 2>/dev/null)'\n",
 }
-TARGET_FIRST = {"run", "test", "rm", "rename", "lease", "allow", "deny", "approve", "targets", "ls"}
+TARGET_FIRST = {"run", "test", "rm", "rename", "allow", "deny", "approve", "targets", "ls"}
 SECRETISH = re.compile(r"pass(wd|word)|pw=|token|secret|api.?key|authori[sz]ation|bearer|://[^/\s:@]+:[^/\s@]+@", re.I)
 HISTORY_LINES = 500
 TIMEOUT = 5
@@ -85,7 +84,7 @@ def _next_words(lines: list[str], typed: list[str], cur: str) -> list[str]:
 
 def remote(name: str, typed: list[str], cur: str, transport=None) -> list[str]:
     t = load_targets(paths.targets_file()).get(name)
-    if t is None or t.status != "active" or not (t.safe or lease_until(name)):
+    if t is None or t.status != "active" or not (t.safe or t.mode == "auto"):
         return []
     logged = [e["command"] for e in audit.read_from(0)[0] if e.get("event") == "run" and e.get("target") == name]
     found = []

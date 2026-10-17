@@ -119,7 +119,6 @@ def describe(e: dict) -> str:
         "denied": lambda: f"denied   a:{e.get('id')}  by {e.get('by')}",
         "transfer": lambda: f"transfer {e.get('source')} -> {e.get('dest')}  ({e.get('result', '')})",
         "read-file": lambda: f"read     {target}:{e.get('path')}",
-        "lease": lambda: f"lease    {target}  {e.get('minutes')} min",
         "target": lambda: f"target   {target}  {e.get('change')}",
         "rule": lambda: f"rule     {target}  {e.get('change')} '{e.get('rule')}'",
     }.get(e.get("event", ""), lambda: f"{e.get('event')} {target}")

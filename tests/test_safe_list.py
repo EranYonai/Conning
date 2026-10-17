@@ -112,12 +112,11 @@ def test_safe_key_is_fail_closed_and_round_trips(home):
 
 
 def test_engine_runs_safe_commands_without_asking(core, transport):
-    write_targets(target("lab"), target("prod", safe=False), target("obs", mode="observe"))
+    write_targets(target("lab"), target("prod", safe=False), target("free", mode="auto"))
     transport.canned["sh -s"] = (0, b"4242\n")  # job start answers with a pid
-    assert core.would_ask("lab,prod,obs", None, ["uname", "-a"]) == ["prod"]
+    assert core.would_ask("lab,prod,free", None, ["uname", "-a"]) == ["prod"]
     assert core.would_ask("lab", None, ["hostname", "evil"]) == ["lab"]
-    assert core._decide(load_targets(paths.targets_file())["obs"], ["df", "-h"]) == "run"  # observe allows it too
-    assert core._decide(load_targets(paths.targets_file())["obs"], ["reboot"]) == "refused"
+    assert core._decide(load_targets(paths.targets_file())["free"], ["reboot"]) == "run"  # auto runs anything
 
 
 def test_allow_lists_a_target_without_the_built_in_list(home):

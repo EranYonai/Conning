@@ -6,7 +6,6 @@ import pytest
 from conftest import needs_sh, target, write_targets
 
 from conning import audit, cli, complete
-from conning.state import grant_lease
 
 
 @pytest.fixture
@@ -68,7 +67,7 @@ def test_gated_like_ls_and_never_audited(lab):
     assert complete.complete(["run", "win", ""], lab) == []
     assert complete.complete(["run", "nope", ""], lab) == []
     assert lab.calls == []
-    grant_lease("off", 10)
+    write_targets(target("off", safe=False, mode="auto"))
     lab.canned["sh -s"] = (0, b"x y\nx 'z\n--conning-live--\nyes\n")  # a stray quote still splits
     assert complete.complete(["run", "off", "x", ""], lab) == ["'z", "y", "yes"]
     assert complete.complete(["run", "off", ""], lab) == ["x", "yes"]

@@ -41,9 +41,8 @@ call only when it returns, so the agent gets progress by polling `read`.
 
 | Mode | Agent can | Default for |
 |---|---|---|
-| `observe` | allowlisted read commands only | `shared`, `prod` |
-| `ask` | allowlisted commands; anything else waits for approval (`status=pending_approval`) | new lab targets |
-| `lease` | anything, for a time box (15 min default, 60 max) | never |
+| `ask` | allowlisted commands; anything else waits for approval (`status=pending_approval`) | every new target |
+| `auto` | anything, without asking, until the human sets `ask` again | never |
 
 - "Always allow" stores the first two words of the command (flags skipped) in the target's allowlist.
 - Every target also allows a built-in list of read-only commands (`uname`, `hostname`, `df`, `ps`, `ls`,
@@ -57,7 +56,7 @@ call only when it returns, so the agent gets progress by polling `read`.
 - OpenSSH runs with a generated config: pinned host keys (mismatch is a hard fail), all forwarding off.
   Conning never connects to an address the agent typed.
 - `conn mcp install` writes agent permission rules denying raw `ssh`/`scp` and reads of Conning's config.
-- Audit log (`<state>/audit.jsonl`): one JSON line per command, decision, approval, rule, lease and
+- Audit log (`<state>/audit.jsonl`): one JSON line per command, decision, approval, rule and
   target change, each carrying the sha256 of the line before it. `conn doctor` reports a broken chain.
   Tamper-evident, not tamper-proof: it runs as your user.
 
@@ -93,7 +92,7 @@ no terminal, since taking trust away is always safe. `conn allow <target>` lists
 | D5 | Four agent tools: targets, run, read, transfer | Schemas cost tokens every turn | locked |
 | D6 | No homemade vault; secret references only | Less of our own crypto | locked |
 | D7 | Shell out to OpenSSH with generated config, pinned keys, no forwarding | Keep ProxyJump and agents, drop unsafe options | locked |
-| D8 | Modes observe / ask / lease; new lab targets start in `ask` | Guardrails in code; works immediately | locked |
+| ~~D8~~ | ~~Modes observe / ask / lease; new lab targets start in `ask`~~ | Superseded by D52 | superseded |
 | D9 | The agent proposes targets; pending until the human approves | One keystroke blocks injected hosts | locked |
 | D10 | CLI help cached in the README (generated, tested) | Saves a `--help` round trip per session | locked |
 | D11 | Project is Conning (CLI `conn`); machines are "targets" | Free on PyPI and npm; agents know "target" | locked |
@@ -132,7 +131,8 @@ no terminal, since taking trust away is always safe. `conn allow <target>` lists
 | D47 | `conn rename <old> <new>` renames a target and carries along everything kept under its name: its place in the target file and its rules, pinned host keys, the keychain password `conn add` stored (moved to the new name, so a later `conn add <old>` can't overwrite it; a reference the human chose stays as is), a lease, a pending target's problem, commands still waiting for approval and jobs still running. Finished jobs, answered approvals and the audit log keep the old name, plus a `renamed` entry. It needs a terminal, and `conn mcp install` denies it to the agent | Eran, from field use: names chosen on day one stop fitting, and rm plus add would lose pins, rules and the password | locked |
 | D48 | End-to-end tests run the real `conn` and the real MCP server (stdio) against a real OpenSSH server: CI's `e2e` job starts a throwaway sshd on 127.0.0.1 (`tests/e2e/start-sshd.sh`, key and password logins for a throwaway user) and runs `pytest -m e2e`, covering every command in `conn help` (a test fails when one has no e2e test), its options, and the MCP server. Human-only commands run in a pseudo-terminal; typed passwords go to a file keychain (`keyrings.alt`, test only). The tests are marked `e2e` and deselected by default, so the mocked unit suite and its 95% coverage gate are unchanged. Their first run found that ssh's connection sharing (`ControlPath %C`, one socket per host, port and user) let a second target for the same login ride the first one's connection, skipping its own key, password and pinned host key; each target now gets its own socket, named by a hash of its generated config | Eran: Conning is cheap to test end to end, because a local sshd is a real target. Mocks can't catch what OpenSSH itself does, as the shared socket showed | locked |
 | D49 | A target can name another target as its jump host (`jump = "gw"`, `conn add --jump gw`; chains allowed). The generated config gets one Host block per hop, each pinned to Conning's own known_hosts under its own alias with forwarding off, linked by ProxyJump; ssh runs every hop with that same file, so `~/.ssh/config` is still never read. Each hop logs in with its own auth, and the askpass helper answers each password prompt by the host key alias ssh names in it. Approving a target behind a jump host fetches its key through the pinned hops with ssh itself (accept-new into a scratch file, no credential offered) and shows it for confirmation. Unknown jump names and loops are target-file errors; a pending hop refuses; `conn rm` keeps a hop in use; `conn rename` updates jumps; `conn import` keeps a ProxyJump to another imported host | Eran asked for jump boxes. D7 promised ProxyJump, but the generated config never had it. Making the jump host a target keeps D7's rules (pinned keys, no forwarding, secret references) on every hop instead of trusting a hop from the user's ssh config | locked |
-| D53 | Tab completion: `conn completion bash\|zsh\|fish` prints a script that calls a hidden `conn __complete` on every Tab. Subcommands and target names come from the local target file. After `conn run <target>`, one ssh call on the target's shared connection (5 s cap) returns the next word of matching commands from Conning's own audit log and the target's `~/.bash_history`/`~/.zsh_history`, then command names on its PATH (first word) or file names. Only live targets that run the read-only list, or have a lease, are asked, since a listing is what `ls` shows. Completion never creates an approval and writes nothing to the audit log, so Tab can't flood it. History is on by default; lines that look like they carry a secret (`password`, `token`, `Authorization`, `user:pass@`...) are dropped, which is a heuristic, so `history = false` turns it off per target. Windows targets complete from Conning's log only. Any error prints nothing | Eran: Tab after `conn run lab rm` should complete from the machine, including what was typed there before. History is on by default at his call, accepting that an agent with a shell can read it through `conn __complete` unlogged | locked |
+| D52 | Two modes, `ask` (the default) and `auto` (anything runs without asking). `observe` and `lease` are gone, and with them `conn lease` and the leases file. The target file stays fail-closed: any other mode is an error that prints the `conn add` line recreating that target (observe becomes ask, lease becomes auto). `conn doctor` warns about every target in `auto`. Older rows that mention a lease (D28, D35, D37, D44, D47) no longer carry one | Eran: everyone already knows ask and auto-approve. Ask with the read-only list already covers what observe was for, a lease mode never did anything on its own, and auto drops the timer in exchange for one mode to remember | locked |
+| D53 | Tab completion: `conn completion bash\|zsh\|fish` prints a script that calls a hidden `conn __complete` on every Tab. Subcommands and target names come from the local target file. After `conn run <target>`, one ssh call on the target's shared connection (5 s cap) returns the next word of matching commands from Conning's own audit log and the target's `~/.bash_history`/`~/.zsh_history`, then command names on its PATH (first word) or file names. Only live targets that run the read-only list, or are in `auto` mode, are asked, since a listing is what `ls` shows. Completion never creates an approval and writes nothing to the audit log, so Tab can't flood it. History is on by default; lines that look like they carry a secret (`password`, `token`, `Authorization`, `user:pass@`...) are dropped, which is a heuristic, so `history = false` turns it off per target. Windows targets complete from Conning's log only. Any error prints nothing | Eran: Tab after `conn run lab rm` should complete from the machine, including what was typed there before. History is on by default at his call, accepting that an agent with a shell can read it through `conn __complete` unlogged | locked |
 | D34 | One audit log in the state dir, JSON lines, each with the sha256 of the line before; `conn watch` and `conn doctor` read it | One source for the live view and for after-the-fact review; edits show up | locked |
 | D35 | `conn allow` needs a terminal and a yes; `conn deny` does not | Granting trust is human-only (like approve and lease); revoking it is always safe | locked |
 | D36 | `conn watch` reads only local files (audit log, job logs) and never contacts a target | Runs beside any number of agents without racing their reads | locked |
@@ -150,7 +150,7 @@ no terminal, since taking trust away is always safe. `conn allow <target>` lists
    `tests/test_cli_and_server.py` (D32).
 8. Connector abstraction: SSH now, WinRM/PSRP and local later (pyinfra).
 9. Import existing inventory from `~/.ssh/config`.
-10. Everything expires: leases and remembered approvals (E2B, Teleport).
+10. Everything expires: remembered approvals (E2B, Teleport). Leases did too until D52.
 11. Fail-closed config: unknown keys are errors (tufantunc/ssh-mcp).
 12. A declarative per-target "prepare" recipe for deploying tooling to a VM (devcontainer hooks).
 
@@ -159,7 +159,7 @@ no terminal, since taking trust away is always safe. `conn allow <target>` lists
 - **M0 (done):** package, CLI surface, MCP server with four tools, target file, output cap,
   allowlist rules, CI and release workflow.
 - **M1 (done):** OpenSSH connector (generated config, pinning, askpass), `run`/`read`/`transfer`, job
-  table, `add`/`approve`/`import`/`test`/`rm`/`lease`, keychain, `op://` and `env:` resolution,
+  table, `add`/`approve`/`import`/`test`/`rm`/`lease` (lease removed by D52), keychain, `op://` and `env:` resolution,
   redaction, approvals by `conn approve a:<id>`.
 - **M2 (done):** approvals in the agent client (MCP elicitation) and at the terminal,
   `conn watch`, desktop notifications, hash-chained audit log, `allow`/`deny`, `doctor`, the built-in

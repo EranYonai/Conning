@@ -272,6 +272,27 @@ def run_here(core: Core, io: IO, result: str, *, wait: int, max_bytes: int, grep
     return 1 if out.startswith("error:") else 0
 
 
+def _choose(io: IO, rule: tuple[str, ...] | None) -> str:
+    """Ask the human: once, always (when the command has a rule to remember) or deny."""
+    choices = "[a]llow once, [e] always allow '" + " ".join(rule) + "', [d]eny" if rule else "[a]llow once, [d]eny"
+    answer = io.ask(f"{choices}: ").strip().lower()[:1]
+    return {"a": "once", "e": "always"}.get(answer) if answer in (("a", "e") if rule else ("a",)) else "deny"
+
+
+def confirm_live(io: IO, t: Target, words: list[str] | None, shown: str) -> bool:
+    """`conn run --tty`: the question `conn approve` asks, put before the pty opens. No approval file."""
+    io.say(f"needs approval on {t.name}: {shown}")
+    rule = remembered_rule(words)
+    answer = _choose(io, rule)
+    if answer == "always":
+        _add_rule([t.name], rule)
+        io.say(f"always allowing '{' '.join(rule)}' on {t.name}")
+    audit.record("denied" if answer == "deny" else "approved", target=t.name, by="terminal", tty=True)
+    if answer == "deny":
+        io.say("denied")
+    return answer != "deny"
+
+
 def approve_command(io: IO, approval_id: str, *, always: bool = False, inline: bool = False) -> int:
     a = Approval.load(approval_id)
     if a is None:
@@ -283,10 +304,7 @@ def approve_command(io: IO, approval_id: str, *, always: bool = False, inline: b
     where = ", ".join(a.targets) + (f" (cwd {a.cwd})" if a.cwd else "")
     io.say(f"needs approval on {where}: {a.display}" if inline else f"a:{a.id} on {where}\n  {a.display}")
     rule = remembered_rule(policy_argv(a.command, a.argv))
-    choices = "[a]llow once, [e] always allow '" + " ".join(rule) + "', [d]eny" if rule else "[a]llow once, [d]eny"
-    answer = "e" if always and rule else io.ask(f"{choices}: ").strip().lower()[:1]
-    choice = {"a": "once", "e": "always"}.get(answer) if answer in (("a", "e") if rule else ("a",)) else None
-    said = decide(a, choice or "deny", by="terminal")
+    said = decide(a, "always" if always and rule else _choose(io, rule), by="terminal")
     if inline:  # the result follows right here, so the note about the agent's `read` is noise
         said = "\n".join(line for line in said.splitlines() if not line.startswith("approved a:"))
     if said:

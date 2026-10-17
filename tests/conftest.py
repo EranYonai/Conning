@@ -73,6 +73,14 @@ class LocalTransport:
         done = subprocess.run(argv, input=stdin or b"", capture_output=True, env=env, timeout=timeout)
         return done.returncode, done.stdout + done.stderr
 
+    def live(self, t, command, write):
+        self.calls.append((t.name, command, None))
+        env = {**os.environ, **self.env.get(t.name, {}), "HOME": str(self.remote_home)}
+        with subprocess.Popen(["sh", "-c", command], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env) as p:
+            while chunk := p.stdout.read(3):  # small pieces, so a secret arrives split across them
+                write(chunk)
+        return p.returncode
+
     def copy(self, t, local, remote_path, *, upload):
         if self.copy_result is not None:
             return self.copy_result

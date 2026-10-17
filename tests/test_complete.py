@@ -124,3 +124,32 @@ def test_history_flag_in_the_target_file(home):
     paths.targets_file().write_text('[lab]\nhost = "h"\nuser = "u"\nhistory = "no"\n')
     with pytest.raises(TargetFileError, match="'history' must be true or false"):
         load_targets(paths.targets_file())
+
+
+@needs_sh
+def test_a_path_dir_without_matches_still_succeeds(tmp_path):
+    script = complete.remote_script([], "s", False)
+    done = subprocess.run(["sh", "-s"], input=script.encode(), capture_output=True, env={"PATH": f"/bin:{tmp_path}"})
+    assert done.returncode == 0 and b"sh\n" in done.stdout
+
+
+def test_a_secret_that_cannot_be_resolved_gives_nothing(lab, monkeypatch):
+    from conning import transport
+    from conning.secrets import SecretError
+
+    def fail(self, t, c, **kw):
+        raise SecretError("env:X is not set")
+
+    monkeypatch.setattr(transport.SSHTransport, "exec", fail)
+    assert complete.remote("lab", [], "o") == []
+
+
+def test_bash_script_never_globs_candidates(tmp_path):
+    (tmp_path / "local-file").write_text("")
+    fake = tmp_path / "conn"
+    fake.write_text("#!/bin/sh\necho '*'\n")
+    fake.chmod(0o755)
+    script = complete.SHELLS["bash"] + 'COMP_WORDS=(conn run lab ""); COMP_CWORD=3; _conn; echo "${COMPREPLY[@]}"'
+    env = {"PATH": f"{tmp_path}:/usr/bin:/bin"}
+    out = subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=env, cwd=tmp_path)
+    assert out.stdout.strip() == "*"

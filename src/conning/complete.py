@@ -16,12 +16,11 @@ import shlex
 
 from conning import audit, paths
 from conning.state import lease_until
-from conning.targets import TargetFileError, load_targets
+from conning.targets import load_targets
 
 SHELLS = {
     "bash": """_conn() {
-    local IFS=$'\\n'
-    COMPREPLY=($(conn __complete "${COMP_WORDS[@]:1:COMP_CWORD}" 2>/dev/null))
+    mapfile -t COMPREPLY < <(conn __complete "${COMP_WORDS[@]:1:COMP_CWORD}" 2>/dev/null)
     [[ ${#COMPREPLY[@]} == 1 && ${COMPREPLY[0]} == */ ]] && compopt -o nospace
 }
 complete -F _conn conn
@@ -34,7 +33,7 @@ complete -F _conn conn
 }
 compdef _conn conn
 """,
-    "fish": "complete -c conn -f -a '(conn __complete (commandline -opc)[2..-1] (commandline -ct))'\n",
+    "fish": "complete -c conn -f -a '(conn __complete (commandline -opc)[2..-1] (commandline -ct) 2>/dev/null)'\n",
 }
 TARGET_FIRST = {"run", "test", "rm", "rename", "lease", "allow", "deny", "approve", "targets", "ls"}
 SECRETISH = re.compile(r"pass(wd|word)|pw=|token|secret|api.?key|authori[sz]ation|bearer|://[^/\s:@]+:[^/\s@]+@", re.I)
@@ -55,11 +54,13 @@ def remote_script(typed: list[str], cur: str, history: bool) -> str:
     if typed:
         live = (
             "b=''; case $p in '~/'*) b='~/'; p=${p#??}; cd ;; esac\n"
-            'for f in "$p"*; do [ -e "$f" ] || continue; [ -d "$f" ] && f="$f/"; echo "$b$f"; done\n'
+            """for f in "$p"*; do [ -e "$f" ] || continue; [ -d "$f" ] && f="$f/"; printf '%s\\n' "$b$f"; done\n"""
         )
     else:
-        live = 'IFS=:; for d in $PATH; do for f in "$d/$p"*; do [ -x "$f" ] && echo "${f##*/}"; done; done\n'
-    return f"p={shlex.quote(cur)}\n{hist}echo {MARK}\n{live}"
+        live = (
+            """IFS=:; for d in $PATH; do for f in "$d/$p"*; do [ -x "$f" ] && printf '%s\\n' "${f##*/}"; done; done\n"""
+        )
+    return f"p={shlex.quote(cur)}\n{hist}echo {MARK}\n{live}exit 0\n"
 
 
 def _next_words(lines: list[str], typed: list[str], cur: str) -> list[str]:
@@ -84,13 +85,14 @@ def remote(name: str, typed: list[str], cur: str, transport=None) -> list[str]:
     logged = [e["command"] for e in audit.read_from(0)[0] if e.get("event") == "run" and e.get("target") == name]
     found = []
     if t.os != "windows":
+        from conning.secrets import SecretError
         from conning.ssh import SSHError
         from conning.transport import SSHTransport
 
         transport = transport or SSHTransport()
         try:
             rc, out = transport.exec(t, "sh -s", stdin=remote_script(typed, cur, t.history).encode(), timeout=TIMEOUT)
-        except (SSHError, OSError):
+        except (SSHError, SecretError, OSError):
             rc, out = 1, b""
         if rc == 0:
             history, _, live = out.decode(errors="replace").partition(MARK + "\n")
@@ -122,6 +124,6 @@ def main(words: list[str]) -> int:
     """`conn __complete`: print candidates, and stay quiet on any error, because a Tab must never fail."""
     try:
         print("\n".join(complete(words)))
-    except (OSError, TargetFileError, ValueError):
+    except Exception:  # noqa: BLE001 - whatever went wrong, a Tab shows nothing
         pass
     return 0

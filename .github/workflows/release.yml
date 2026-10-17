@@ -71,7 +71,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-  # The listing in the official MCP Registry (D50), once the package and the image it points to are out.
+  # The listing in the official MCP Registry (D51), once the package and the image it points to are out.
   # The registry trusts this repository's GitHub OIDC token for the io.github.EranYonai namespace.
   registry:
     needs: [publish, image]

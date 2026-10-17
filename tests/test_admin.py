@@ -177,6 +177,14 @@ def test_approve_target(core, transport, keyscan, keychain):
     assert admin.approve(core, io, "ghost") == 1 and "no target ghost" in io.text
 
 
+def test_approving_a_target_in_auto_says_so(core, transport, keyscan, keychain):
+    write_targets(target(status="pending", mode="auto"))  # an agent may propose auto; the human sees it
+    transport.canned["uname -s"] = (0, b"Linux\n")
+    io = FakeIO("n")
+    assert admin.approve(core, io, "lab") == 1 and saved().status == "pending"
+    assert "mode=auto" in io.text and "the agent runs anything without asking?" in io.text
+
+
 def test_agent_cannot_add_a_password_target_without_a_reference(core):
     io = FakeIO(tty=False)
     assert admin.add(core, io, "lab", host="h", user="u", auth="password") == 1

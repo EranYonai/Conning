@@ -67,6 +67,8 @@ def test_an_old_mode_names_the_command_that_recreates_the_target(tmp_path, old, 
         f"[lab]: mode '{old}' is not supported, only ask or auto. Delete this entry and recreate the target: "
         f"conn add lab --host 10.0.0.5 --user tester --port 2222 --jump gw --mode {new} --tag 'x y'"
     )
+    with pytest.raises(TargetFileError, match=r"--mode ask, then copy back its allow, safe by hand$"):
+        load_targets(write(tmp_path, '[x]\nhost="h"\nuser="u"\nmode="observe"\nallow=[["df"]]\nsafe=false\n'))
 
 
 def test_missing_file_means_no_targets(tmp_path):

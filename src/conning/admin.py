@@ -191,10 +191,12 @@ def _enroll(core: Core, io: IO, t: Target) -> int:
             return _stays_pending(io, t, ssh.no_ssh_hint(t), "no SSH server answered")
         return _stays_pending(io, t, f"{t.name}: no host keys offered", "no host keys offered")
     via = f"  via {t.jump}" if t.jump else ""
-    io.say(f"{t.name}: {t.user}@{t.host}:{t.port}{via}  auth={t.auth}" + (f"  secret={t.secret}" if t.secret else ""))
+    secret = f"  secret={t.secret}" if t.secret else ""
+    io.say(f"{t.name}: {t.user}@{t.host}:{t.port}{via}  auth={t.auth}{secret}  mode={t.mode}")
     for key_type, fp, _ in keys:
         io.say(f"  host key {key_type:<20} {fp}")
-    if not _confirm(io, "pin these host keys and make the target live?"):
+    auto = " in mode=auto, where the agent runs anything without asking" if t.mode == "auto" else ""
+    if not _confirm(io, f"pin these host keys and make the target live{auto}?"):
         return _stays_pending(io, t, "not pinned; the target stays pending", "host key not confirmed")
     ssh.pin_host_keys(t.name, keys)
     t = replace(t, hostkey=keys[0][1], status="active")

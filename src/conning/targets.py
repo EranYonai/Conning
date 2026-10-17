@@ -142,7 +142,8 @@ def _add_command(name: str, table: dict) -> str:
     argv += ["--mode", "auto" if table["mode"] == "lease" else "ask"]
     for tag in table.get("tags", ()):
         argv += ["--tag", str(tag)]
-    return shlex.join(argv)
+    by_hand = [key for key in ("allow", "inject", "safe", "shell") if key in table]
+    return shlex.join(argv) + (f", then copy back its {', '.join(by_hand)} by hand" if by_hand else "")
 
 
 def _check_choice(where: str, table: dict, key: str, choices: tuple[str, ...]) -> None:

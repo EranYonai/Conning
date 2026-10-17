@@ -56,7 +56,7 @@ call only when it returns, so the agent gets progress by polling `read`.
 - OpenSSH runs with a generated config: pinned host keys (mismatch is a hard fail), all forwarding off.
   Conning never connects to an address the agent typed.
 - `conn mcp install` writes agent permission rules denying raw `ssh`/`scp` and reads of Conning's config.
-- Audit log (`<state>/audit.jsonl`): one JSON line per command, decision, approval, rule, lease and
+- Audit log (`<state>/audit.jsonl`): one JSON line per command, decision, approval, rule and
   target change, each carrying the sha256 of the line before it. `conn doctor` reports a broken chain.
   Tamper-evident, not tamper-proof: it runs as your user.
 

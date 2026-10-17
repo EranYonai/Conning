@@ -8,18 +8,14 @@ import pytest
 from conftest import needs_pwsh, target, write_targets
 
 from conning import remote
-from conning.state import Job, grant_lease
+from conning.state import Job
 
 pytestmark = needs_pwsh
 
 
 def win(**kw):
+    kw.setdefault("mode", "auto")  # these tests are about jobs, not approvals
     return target("win", os="windows", shell="pwsh", **kw)
-
-
-@pytest.fixture(autouse=True)
-def _lease(home):
-    grant_lease("win", 10)  # these tests are about jobs, not approvals
 
 
 def jobs_dir(transport):

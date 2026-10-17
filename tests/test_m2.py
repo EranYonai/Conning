@@ -9,7 +9,7 @@ from conftest import needs_pwsh, needs_sh, target, write_targets
 from test_admin import FakeIO
 
 from conning import admin, audit, cli, doctor, notify, paths, secrets, server, ssh, watch
-from conning.state import Approval, Job, grant_lease, set_problem
+from conning.state import Approval, Job, set_problem
 from conning.targets import load_targets
 
 
@@ -66,7 +66,6 @@ def test_audit_without_a_file_or_a_writable_dir(monkeypatch, tmp_path):
         ({"event": "denied", "id": "cd", "by": "terminal"}, "denied   a:cd  by terminal"),
         ({"event": "transfer", "source": "local:a", "dest": "lab:/b", "result": "ok"}, "transfer local:a -> lab:/b"),
         ({"event": "read-file", "target": "lab", "path": "/etc/hosts"}, "read     lab:/etc/hosts"),
-        ({"event": "lease", "target": "lab", "minutes": 5}, "lease    lab  5 min"),
         ({"event": "target", "target": "lab", "change": "live"}, "target   lab  live"),
         ({"event": "rule", "target": "lab", "change": "allow", "rule": "df"}, "rule     lab  allow 'df'"),
         ({"event": "other", "target": "lab"}, "other lab"),
@@ -231,18 +230,16 @@ def test_deny_removes_a_rule_without_a_terminal(home):
     assert admin.deny(io, "lab", []) == 1 and "give the command words" in io.text
 
 
-def test_lease_add_and_remove_are_audited(core, monkeypatch):
+def test_add_and_remove_are_audited(core, monkeypatch):
     monkeypatch.setattr(ssh, "scan_host_keys", lambda host, port: [("ssh-ed25519", "SHA256:abc", "QUFB")])
     monkeypatch.setattr(admin, "probe", lambda core, t: ("linux", "bash", None))
     assert admin.add(core, FakeIO(tty=False), "lab", host="192.0.2.10", user="u") == 0
     assert admin.approve(core, FakeIO("y"), "lab") == 0
-    assert admin.lease(FakeIO("y"), "lab", 5) == 0
     monkeypatch.setattr(ssh, "pin_host_keys", lambda name, keys: None)
     assert admin.remove(FakeIO(), "lab") == 0
     assert [(e["event"], e.get("change")) for e in events()] == [
         ("target", "proposed"),
         ("target", "live"),
-        ("lease", None),
         ("target", "removed"),
     ]
 
@@ -252,7 +249,7 @@ def test_lease_add_and_remove_are_audited(core, monkeypatch):
 
 def test_watch_shows_history_and_stops(home):
     for i in range(3):
-        audit.record("lease", target=f"t{i}", minutes=i)
+        audit.record("ping", target=f"t{i}", minutes=i)
     io = FakeIO(tty=False)
     assert watch.watch(None, io, history=2, follow=False) == 0
     assert len(io.said) == 2 and "t2" in io.said[-1]
@@ -333,9 +330,9 @@ def test_doctor_reports_problems(home, tools, monkeypatch):
         target("lab", auth="password", secret="keychain:conning/lab"),
         target("ci", secret="op://v/i/f", inject={"TOKEN": "env:CONNING_DOCTOR_UNSET"}),
         target("new", status="pending"),
+        target("free", mode="auto"),
     )
     set_problem("new", "no SSH server answered")
-    grant_lease("lab", 5)
     io = FakeIO()
     assert doctor.doctor(io) == 1
     text = io.text
@@ -347,7 +344,7 @@ def test_doctor_reports_problems(home, tools, monkeypatch):
         "warn secret env:CONNING_DOCTOR_UNSET is not set",
         "warn new is pending (no SSH server answered)",
         "FAIL lab has no pinned host key",
-        "warn lab has a lease",
+        "warn free has mode=auto",
     ):
         assert expected in text, expected
 
@@ -404,7 +401,7 @@ class EngineStub:
             return "exit=0 dur=0.1s"
         self.approval = pending(self.command)
         note = f"status=pending_approval id=a:{self.approval.id} targets=lab (not on the allowlist)"
-        return "refused  db  (observe)\n" + note
+        return "blocked  db  (target is pending)\n" + note
 
     def read(self, id, wait=0, grep=None, max_bytes=0, **kw):
         self.reads.append((id, wait))
@@ -447,7 +444,7 @@ def test_client_prompt_allows_always(home, mode):
     text, seen = call_run(server.build_server(engine), answer("accept", "always"), mode=mode)
     assert "systemctl status sshd" in seen[0].message and "'systemctl status ...'" in seen[0].message
     assert seen[0].requested_schema["properties"]["decision"]["enum"] == ["once", "always", "deny"]
-    assert text == "refused  db  (observe)\nexit=0 dur=0.1s out=o:xy\nactive"
+    assert text == "blocked  db  (target is pending)\nexit=0 dur=0.1s out=o:xy\nactive"
     assert engine.reads == [(f"a:{engine.approval.id}", 7)]
     assert ("systemctl", "status") in load_targets(paths.targets_file())["lab"].allow
     assert events("approved")[0]["by"] == "client"
@@ -501,8 +498,8 @@ def test_client_prompt_skips_engine_errors(home):
 
 
 def test_would_ask(core):
-    write_targets(target("lab", allow=(("df",),)), target("obs", mode="observe"))
-    assert core.would_ask("lab,obs", None, ["make"]) == ["lab"]
+    write_targets(target("lab", allow=(("df",),)), target("free", mode="auto"))
+    assert core.would_ask("lab,free", None, ["make"]) == ["lab"]
     assert core.would_ask("lab", None, ["uname", "-a"]) == []  # on the built-in list
     assert core.would_ask("lab", "df -h", None) == []
     assert core.would_ask("nope", None, ["x"]) == []
@@ -553,7 +550,7 @@ def test_cli_watch(monkeypatch):
 
 
 def test_audit_file_is_json_lines(home):
-    audit.record("lease", target="lab", minutes=5)
+    audit.record("ping", target="lab", minutes=5)
     line = audit.log_file().read_text().strip()
     assert json.loads(line)["minutes"] == 5
 
@@ -561,7 +558,7 @@ def test_audit_file_is_json_lines(home):
 def test_audit_chain_detects_edits_and_deletions(home, tools):
     assert audit.verify() is None
     for minutes in (1, 2, 3):
-        audit.record("lease", target="lab", minutes=minutes)
+        audit.record("ping", target="lab", minutes=minutes)
     assert audit.verify() is None and audit.read_from(0)[0][0]["prev"] == audit.GENESIS
     path = audit.log_file()
     lines = path.read_text().splitlines()

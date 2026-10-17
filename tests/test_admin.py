@@ -2,7 +2,7 @@ import pytest
 from conftest import target, write_targets
 
 from conning import admin, paths, ssh
-from conning.state import Approval, lease_until
+from conning.state import Approval
 from conning.targets import load_targets
 
 KEYS = [("ssh-ed25519", "SHA256:abc", "QUFB")]
@@ -177,6 +177,14 @@ def test_approve_target(core, transport, keyscan, keychain):
     assert admin.approve(core, io, "ghost") == 1 and "no target ghost" in io.text
 
 
+def test_approving_a_target_in_auto_says_so(core, transport, keyscan, keychain):
+    write_targets(target(status="pending", mode="auto"))  # an agent may propose auto; the human sees it
+    transport.canned["uname -s"] = (0, b"Linux\n")
+    io = FakeIO("n")
+    assert admin.approve(core, io, "lab") == 1 and saved().status == "pending"
+    assert "mode=auto" in io.text and "the agent runs anything without asking?" in io.text
+
+
 def test_agent_cannot_add_a_password_target_without_a_reference(core):
     io = FakeIO(tty=False)
     assert admin.add(core, io, "lab", host="h", user="u", auth="password") == 1
@@ -246,7 +254,7 @@ def test_shell_syntax_command_can_only_be_allowed_once(home):
     assert "[a]llow once, [d]eny" in io.text and Approval.load("ab12").status == "denied"
 
 
-# --- rm, test, lease ----------------------------------------------------------------------------
+# --- rm, test ----------------------------------------------------------------------------
 
 
 def test_remove(home):
@@ -267,15 +275,6 @@ def test_test_command(core, transport):
     transport.canned["uname -s"] = (255, b"x")
     io = FakeIO()
     assert admin.test(core, io, "lab") == 1 and "explained" in io.text
-
-
-def test_lease(home):
-    write_targets(target())
-    assert admin.lease(FakeIO(tty=False), "lab", 5) == 1
-    assert admin.lease(FakeIO(), "ghost", 5) == 1
-    assert admin.lease(FakeIO(), "lab", 61) == 1
-    assert admin.lease(FakeIO("n"), "lab", 5) == 1 and lease_until("lab") is None
-    assert admin.lease(FakeIO("y"), "lab", 5) == 0 and lease_until("lab") is not None
 
 
 def test_console_io_say(capsys):

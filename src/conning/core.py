@@ -15,7 +15,7 @@ from conning.output import DEFAULT_MAX_BYTES, clamp_max_bytes, render, render_fa
 from conning.policy import is_allowed, is_safe, policy_argv
 from conning.secrets import SecretError, redact
 from conning.ssh import SSHError
-from conning.state import Approval, Job, lease_until, new_id, problems
+from conning.state import Approval, Job, new_id, problems
 from conning.targets import Target, TargetFileError, listing, load_targets, select
 from conning.transport import SSHTransport, Transport
 
@@ -83,14 +83,12 @@ class Core:
         return self.transport.exec(t, "sh -s", stdin=posix.encode())
 
     def _decide(self, t: Target, words: list[str] | None) -> str:
-        """run | approve | refused | blocked"""
+        """run | approve | blocked"""
         if t.status == "pending":
             return "blocked"
-        if lease_until(t.name):
+        if t.mode == "auto" or is_allowed(words, t.allow) or (t.safe and is_safe(words)):
             return "run"
-        if is_allowed(words, t.allow) or (t.safe and is_safe(words)):
-            return "run"
-        return "refused" if t.mode == "observe" else "approve"
+        return "approve"
 
     def would_ask(self, target: str, cmd: str | None, argv: list[str] | None) -> list[str]:
         """The targets where this command would wait for approval. No side effects; errors mean none."""
@@ -166,8 +164,6 @@ class Core:
         for t in chosen:
             if decisions[t.name] == "blocked":
                 notes.append(f"blocked  {t.name}  (target is pending; human runs: conn approve {t.name})")
-            elif decisions[t.name] == "refused":
-                notes.append(f"refused  {t.name}  (mode=observe allows allowlisted commands only)")
         needs = [t.name for t in chosen if decisions[t.name] == "approve"]
         if needs:
             a = Approval(id=new_id(), targets=needs, command=cmd, argv=argv, cwd=cwd, timeout=timeout)
@@ -393,8 +389,6 @@ class Core:
         t, err = self._one(name)
         if err:
             return err
-        if upload and t.mode == "observe" and not lease_until(name):
-            return f"refused  {name}  (mode=observe: uploads are not allowed)"
         if upload and not local_path.exists():
             return f"error: local:{local_path} does not exist"
         if not upload and local_path.is_dir():

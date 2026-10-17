@@ -6,12 +6,11 @@ read-only and the OS keychain is out of reach. Doctor names the problem and the 
 
 import os
 import shutil
-import time
 from pathlib import Path
 
 from conning import __version__, audit, paths, secrets, ssh
 from conning.admin import IO
-from conning.state import lease_until, problems
+from conning.state import problems
 from conning.targets import TargetFileError, load_targets
 
 
@@ -39,7 +38,7 @@ def doctor(io: IO) -> int:
     else:
         report(
             "warn",
-            f"config {config} is read-only here: commands still run, but add, approve, allow and lease "
+            f"config {config} is read-only here: commands still run, but add, approve, allow and rename "
             "must happen in a normal terminal (an agent sandbox usually looks like this)",
         )
     try:
@@ -104,7 +103,6 @@ def doctor(io: IO) -> int:
             report("warn", f"{t.name} is pending{why}; a human runs: conn approve {t.name}")
         elif f"{ssh.host_key_alias(t.name)} " not in pinned:
             report("FAIL", f"{t.name} has no pinned host key; run: conn approve {t.name}")
-        if until := lease_until(t.name):
-            ends = time.strftime("%H:%M", time.localtime(until))
-            report("warn", f"{t.name} has a lease: the agent may run anything there until {ends}")
+        if t.mode == "auto":
+            report("warn", f"{t.name} has mode=auto: the agent may run anything there without asking")
     return 1 if failed else 0

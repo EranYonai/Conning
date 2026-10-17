@@ -1,6 +1,6 @@
 """Where Conning keeps its files.
 
-The config dir holds what the human decides: targets, pinned host keys, leases. Running commands only
+The config dir holds what the human decides: targets and pinned host keys. Running commands only
 reads it, so it can be read-only for an agent's sandbox. The state dir holds what running creates: job
 output, approval requests, generated ssh configs. CONNING_HOME and CONNING_STATE override them.
 """

@@ -345,7 +345,7 @@ status=running job=j:3fa9 dur=20.0s +41 lines
   <p class="label">Newest first.</p>
 
   <!-- NEW ENTRIES go directly below this line -->
-  <details open><summary>#15 · On the map: the MCP Registry <span>2026-10-17</span></summary><div class="entry">
+  <details open><summary>#16 · On the map: the MCP Registry <span>2026-10-17</span></summary><div class="entry">
     <p>With jump hosts in, the only thing left on the roadmap is people using Conning, and the first place they look is the official MCP Registry, which clients and other directories read their server lists from. Back at D31 we said "not yet". Now it is yes (D50).</p>
     <p>The registry holds only metadata, so the listing is one file, <code>server.json</code>, naming both ways to run Conning: <code>uvx conning mcp</code> from PyPI, and the GHCR image with <code>--network host</code>, your config folder as its volume and your ssh-agent socket. The registry checks that we own both: the PyPI page carries a hidden <code>mcp-name</code> comment from the README, and the image carries a matching label. The release workflow now publishes the listing as its last step, after the package and the image are out, logging in with the repository's own GitHub identity, so there is no token to store and the listing moves with every release.</p>
   </div></details>

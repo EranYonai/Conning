@@ -1,4 +1,4 @@
-"""Tab completion for `conn` in bash, zsh and fish (D50).
+"""Tab completion for `conn` in bash, zsh and fish (D53).
 
 `conn completion <shell>` prints a script for the shell's rc file. On every Tab it calls
 `conn __complete <words...> <current word>`, which prints one candidate per line.

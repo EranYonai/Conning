@@ -38,7 +38,7 @@ conn mcp install claude        # or codex, cursor, opencode, pi: adds the server
 
 For Tab completion that reads the target (its files, commands and shell history), add
 `eval "$(conn completion bash)"` to `~/.bashrc` (or `zsh` to `~/.zshrc`; for fish,
-`conn completion fish | source`). Set `history = false` on a target to keep its shell history out (D50).
+`conn completion fish | source`). Set `history = false` on a target to keep its shell history out (D53).
 
 The MCP server needs no install at all:
 

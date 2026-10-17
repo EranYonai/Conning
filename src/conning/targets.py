@@ -40,7 +40,7 @@ class Target:
     inject: dict[str, str] = field(default_factory=dict)
     status: str = "active"
     safe: bool = True  # the built-in read-only commands run without asking (D39)
-    history: bool = True  # Tab completion reads the target's shell history (D50)
+    history: bool = True  # Tab completion reads the target's shell history (D53)
 
 
 KEYS = {f.name for f in fields(Target)} - {"name"}

@@ -1,4 +1,4 @@
-"""D50: Tab completion from the target: history and live listings, gated like `ls`, never audited."""
+"""D53: Tab completion from the target: history and live listings, gated like `ls`, never audited."""
 
 import subprocess
 

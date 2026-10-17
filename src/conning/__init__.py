@@ -1,3 +1,3 @@
 """Conning: a control room for your agent's test machines."""
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"

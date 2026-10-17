@@ -1,7 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 (2026-10-17)
 
+- Two permission modes: `ask` (the default) and `auto`, which runs anything without asking. `observe`,
+  `lease` and `conn lease` are gone; a target file that still names them fails to load and prints the
+  `conn add` line that recreates the target. `conn doctor` warns about every target in `auto`.
+- Leaner results: text only, with no second `structuredContent` copy and smaller tool schemas. The header
+  drops `dur=` under a second and names the `out=` handle only when output is hidden.
+- Tab completion: `conn completion bash|zsh|fish` (or `conn completion install`) completes subcommands,
+  target names and, after `conn run <target>`, commands, history and file names from the target itself.
 - Listed in the official MCP Registry as `io.github.EranYonai/conning`: `server.json` describes the PyPI
   package and the GHCR image, and each release now publishes the listing after the package and the image.
 

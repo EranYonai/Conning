@@ -25,5 +25,6 @@ def test_targets_command(tmp_path, monkeypatch, capsys):
 def test_server_has_exactly_four_tools_and_a_small_schema():
     tools = asyncio.run(build_server().list_tools())
     assert sorted(t.name for t in tools) == ["read", "run", "targets", "transfer"]
-    size = len(json.dumps([t.model_dump(exclude_none=True) for t in tools]))
-    assert size < 6000, f"tool schemas grew to {size} chars; every char costs context on every turn"
+    assert all(t.output_schema is None for t in tools)  # results are text only, never sent twice (D50)
+    size = len(json.dumps([t.model_dump(by_alias=True, exclude_none=True) for t in tools]))
+    assert size < 2600, f"tool schemas grew to {size} chars; every char costs context on every turn"

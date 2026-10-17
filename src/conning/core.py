@@ -271,10 +271,12 @@ class Core:
             lines = new.count("\n")
             header = f"status=running job=j:{job.id} dur={dur:.1f}s +{lines} lines"
             return render(header, _grep(new, grep), max_bytes=max_bytes, head=0, tail=20, handle=f"o:{job.id}")
-        header = f"exit={job.rc} dur={dur:.1f}s out=o:{job.id}"
+        header = f"exit={job.rc}" + (f" dur={dur:.1f}s" if dur >= 1 else "")
+        if grep:  # the full output is not on screen, so name its handle even when nothing was cut
+            header += f" out=o:{job.id}"
         if job.rc == 124 and job.detached:
             header += " (timed out)"
-        return render(header, _grep(new, grep), max_bytes=max_bytes, handle=f"o:{job.id}")
+        return render(header, _grep(new, grep), max_bytes=max_bytes, handle=f"o:{job.id}", name_handle=not grep)
 
     # --- read ---------------------------------------------------------------------------------
 

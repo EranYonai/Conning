@@ -2,7 +2,7 @@ import pytest
 from conftest import target, write_targets
 
 from conning import admin, paths, ssh
-from conning.state import Approval, lease_until
+from conning.state import Approval
 from conning.targets import load_targets
 
 KEYS = [("ssh-ed25519", "SHA256:abc", "QUFB")]
@@ -246,7 +246,7 @@ def test_shell_syntax_command_can_only_be_allowed_once(home):
     assert "[a]llow once, [d]eny" in io.text and Approval.load("ab12").status == "denied"
 
 
-# --- rm, test, lease ----------------------------------------------------------------------------
+# --- rm, test ----------------------------------------------------------------------------
 
 
 def test_remove(home):
@@ -267,15 +267,6 @@ def test_test_command(core, transport):
     transport.canned["uname -s"] = (255, b"x")
     io = FakeIO()
     assert admin.test(core, io, "lab") == 1 and "explained" in io.text
-
-
-def test_lease(home):
-    write_targets(target())
-    assert admin.lease(FakeIO(tty=False), "lab", 5) == 1
-    assert admin.lease(FakeIO(), "ghost", 5) == 1
-    assert admin.lease(FakeIO(), "lab", 61) == 1
-    assert admin.lease(FakeIO("n"), "lab", 5) == 1 and lease_until("lab") is None
-    assert admin.lease(FakeIO("y"), "lab", 5) == 0 and lease_until("lab") is not None
 
 
 def test_console_io_say(capsys):

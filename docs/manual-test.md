@@ -81,10 +81,10 @@ conn approve a:<id>          # type a; it prints exit=0
 conn read a:<id>             # what the agent sees: the same result
 ```
 
-## 5. Lease, long jobs, signals, timeouts
+## 5. Auto mode, long jobs, signals, timeouts
 
 ```sh
-conn lease lab --minutes 10  # type y; the agent may now run anything on lab for 10 minutes
+# set mode = "auto" in lab's entry in targets.toml: the agent may now run anything on lab
 conn run lab --wait 0 sh -c 'for i in 1 2 3 4 5 6; do echo tick $i; sleep 1; done'
 ```
 Expect: `status=running job=j:<job> ...`. Then:
@@ -203,7 +203,7 @@ For claude it also runs `claude mcp add --scope user conning -- ...` when the `c
 
 ## 13. Windows jobs (only with a Windows lab VM)
 
-Add it as in step 3 (`--os windows`), lease it, then:
+Add it as in step 3 (`--os windows --mode auto`), then:
 
 ```sh
 conn run win --shell --wait 0 'Write-Output start; Start-Sleep 30; Write-Output done'

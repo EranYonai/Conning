@@ -56,6 +56,18 @@ def test_errors_exit_nonzero(fake, capsys):
     assert cli.main(["run", "lab", "--shell", "--", "fail"]) == 1
 
 
+def test_ctrl_c_exits_quietly(fake, monkeypatch, capsys):
+    def interrupted(*a, **k):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(fake, "run", interrupted, raising=False)
+    monkeypatch.setattr(cli.os, "_exit", lambda rc: exits.append(rc))
+    exits = []
+    cli.main(["run", "lab", "dir"])
+    assert exits == [130]
+    assert capsys.readouterr().err == "interrupted\n"
+
+
 def test_admin_commands_reach_admin(fake, monkeypatch):
     seen = []
     for name in ("add", "approve", "remove", "rename", "test", "import_ssh_config"):

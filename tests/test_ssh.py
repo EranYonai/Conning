@@ -113,7 +113,7 @@ def test_run_timeout_returns_124(monkeypatch):
     monkeypatch.setattr(ssh.subprocess, "run", fake_run)
     conn = ssh.Connection(["ssh"], {}, [])
     rc, out = ssh.run(conn, "sleep 9", timeout=1)
-    assert rc == 124 and out.startswith(b"partial") and b"timed out" in out
+    assert rc == 124 and out.startswith(b"partial") and b"timed out after 1s" in out
 
 
 @pytest.mark.parametrize(

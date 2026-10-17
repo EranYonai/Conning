@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -49,6 +50,27 @@ def test_keychain_roundtrip(keyring):
     assert secrets.resolve("keychain:bare") == "x"  # no service: the default one
     with pytest.raises(SecretError, match="not found"):
         secrets.resolve("keychain:conning/missing")
+
+
+def test_keychain_read_that_never_returns_times_out(monkeypatch):
+    class StuckKeyring:  # macOS waiting on an allow-access dialog nobody sees
+        def get_password(self, *a):
+            threading.Event().wait()
+
+    monkeypatch.setattr(secrets, "_keyring", lambda: StuckKeyring())
+    monkeypatch.setattr(secrets, "KEYCHAIN_TIMEOUT", 0.05)
+    with pytest.raises(SecretError, match="did not answer in 0.05s .*allow-access dialog"):
+        secrets.resolve("keychain:conning/lab")
+
+
+def test_keychain_errors_reach_the_caller(monkeypatch):
+    class BrokenKeyring:
+        def get_password(self, *a):
+            raise RuntimeError("Keychain error -60008")
+
+    monkeypatch.setattr(secrets, "_keyring", lambda: BrokenKeyring())
+    with pytest.raises(SecretError, match="OS keychain error .Keychain error -60008"):
+        secrets.resolve("keychain:conning/lab")
 
 
 def test_op_reference(monkeypatch):

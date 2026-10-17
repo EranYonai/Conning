@@ -214,7 +214,7 @@ def run(conn: Connection, remote_command: str, *, stdin: bytes | None = None, ti
             timeout=timeout,
         )
     except subprocess.TimeoutExpired as e:
-        return 124, (e.output or b"") + b"\n[conning: ssh call timed out]"
+        return 124, (e.output or b"") + f"\n[conning: ssh call timed out after {timeout:g}s]".encode()
     return done.returncode, done.stdout
 
 

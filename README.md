@@ -4,32 +4,35 @@
 
 <p align="center"><img src="docs/brand/handler-hero.svg" alt="Handler, the Conning mascot: a friendly cartoon glove working puppet strings on three lab VMs" width="360"></p>
 
-**A control room for your agent's test machines.** Your agent (Claude Code, Codex, Cursor...) stays on
-your own laptop. Conning holds the keys to your lab VMs and gives the agent four lean tools to run
-commands and move files there. The agent never sees a password, and you approve anything risky.
+**A light, local SSH controller for humans and agents.** Conning is one small CLI and MCP server on
+your own machine. It runs commands, long jobs and file copies on your test machines over plain
+OpenSSH. You drive it from a terminal; your agent (Claude Code, Codex, Cursor...) gets the same four
+commands as MCP tools, with identical output. Conning holds the keys, so the agent never sees a
+password, and you approve anything risky.
 
-> **Status: pre-alpha (M2 done).** Running commands, long jobs, remote file reads and transfers
-> work over OpenSSH, with pinned host keys, password or key auth and approvals. You can approve
-> in the agent client, in `conn watch` or with `conn approve`; `conn doctor` checks your setup. Long
-> jobs run detached on Linux, macOS and Windows targets, and `conn mcp install` sets up claude, codex,
-> cursor, opencode or pi. See
-> [docs/design.md](docs/design.md) for every decision so far.
+```sh
+conn targets add lab --host 10.0.0.5 --user tester   # asks for the rest, pins the host key
+conn run lab uname -a                                 # exit code first, then the output
+conn targets mode lab auto                            # optional: let the agent run anything there
+```
 
-## Why
+> **Status: early (0.6).** Linux, macOS and Windows targets work, with long jobs, transfers, jump
+> hosts and approvals. See [docs/design.md](docs/design.md) for every decision so far.
 
-Putting an agent harness inside every CLI on every remote machine is redundant. Developers already
-have a capable agent on their own machine. What's missing is a safe, token-lean way for that agent to
-reach the machines it tests on:
+## What it is
 
-- **No secrets in context.** Targets hold *references* to the OS keychain, `op://` or ssh-agent.
-  Secrets are resolved inside Conning at the last moment and never returned by any tool.
-- **Lean results.** Exit code first, output capped at 8 KB by default (the agent may ask for more, up
-  to a ceiling), with a handle to page the rest. Fan-out to many targets collapses identical results.
-- **Guardrails in code, not in the prompt.** Each target has a mode, `ask` or `auto`.
-  Commands outside the allowlist wait for your approval; "always allow" remembers two words, so
-  `systemctl status` never lets through `systemctl stop`.
-- **Plain OpenSSH underneath.** Linux and Windows (OpenSSH + PowerShell 7), pinned host keys,
-  forwarding forced off.
+- **Light.** One Python package and no daemon: the MCP server runs on stdio when your agent starts it.
+  Four tools cost about 1k tokens a turn. Results lead with the exit code and are capped at 8 KB by
+  default, with a handle to page the rest; fan-out to many targets collapses identical results.
+- **Local.** It runs next to you and your agent. Targets only need inbound SSH, and nothing gets
+  installed on them. Secrets stay where they are (OS keychain, `op://`, ssh-agent): the target file
+  holds references, and no tool ever returns a secret.
+- **SSH.** Plain OpenSSH underneath, never your `~/.ssh/config`: a generated config per target, pinned
+  host keys, forwarding off, jump hosts. Windows targets need OpenSSH and PowerShell 7.
+- **For humans and agents.** Each target has a mode, `ask` or `auto`. In `ask`, read-only commands and
+  your allow rules run, and anything else waits for you; "always allow" remembers two words, so
+  `systemctl status` never lets through `systemctl stop`. Only you grant trust: in the agent
+  client's prompt, in `conn watch` or at your terminal.
 
 ## Install
 

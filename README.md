@@ -13,6 +13,7 @@ password, and you approve anything risky.
 ```sh
 conn targets add lab --host 10.0.0.5 --user tester   # asks for the rest, pins the host key
 conn run lab uname -a                                 # exit code first, then the output
+conn run -t lab apt upgrade                           # you, at a terminal: live, like ssh -t
 conn targets mode lab auto                            # optional: let the agent run anything there
 ```
 

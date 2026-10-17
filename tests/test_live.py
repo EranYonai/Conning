@@ -17,7 +17,7 @@ def live(core, *argv, confirm=None, cwd=None, cmd=None):
     out = []
     asked = []
 
-    def ask(t, words):
+    def ask(t, words, shown):
         asked.append(words)
         return confirm
 
@@ -57,6 +57,15 @@ def test_a_command_that_would_ask_is_put_to_the_human(core, transport):
     assert not [c for c in transport.calls if "live" in c[1]]
     rc, out, asked = live(core, "echo", "hi", confirm=True)
     assert (rc, out, asked) == (0, "hi\n", [["echo", "hi"]])
+
+
+@needs_sh
+def test_when_ssh_fails_the_env_file_is_removed(core, transport):
+    write_targets(target("lab", mode="auto"))
+    transport.env["lab"] = {"TOKEN": "s3cr3t-value"}
+    transport.live = lambda t, command, write: 255
+    assert live(core, "true")[0] == 255
+    assert list((transport.remote_home / ".conning" / "jobs").iterdir()) == []
 
 
 @pytest.mark.parametrize(

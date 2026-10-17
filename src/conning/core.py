@@ -189,7 +189,7 @@ class Core:
         cmd: str | None,
         argv: list[str] | None,
         cwd: str | None,
-        confirm: Callable[[Target, list[str] | None], bool],
+        confirm: Callable[[Target, list[str] | None, str], bool],
         write: Callable[[str], None],
     ) -> int | str:
         """`conn run --tty`: one POSIX target, in a pty, its output streamed to `write` (redacted) as it comes.
@@ -212,7 +212,7 @@ class Core:
         audit.record("run", target=t.name, command=shown, decision=decision, cwd=cwd, tty=True)
         if decision == "blocked":
             return f"error: {t.name} is pending; human runs: conn approve {t.name}"
-        if decision == "approve" and not confirm(t, words):
+        if decision == "approve" and not confirm(t, words, shown):
             return 1
         job_id = new_id()
         command = self._command_for(t, cmd, argv)
@@ -225,6 +225,8 @@ class Core:
                 return f"error: {t.name}: {self.transport.explain(t, rc, out)}"
             audit.record("start", target=t.name, job=job_id, command=command, tty=True)
             rc = self.transport.live(t, run_file, lambda chunk: write(hide.feed(decode(chunk))))
+            if rc == 255:  # ssh failed, maybe before the file could delete itself
+                self._script(t, f'rm -f "$HOME/.conning/jobs/{job_id}.live.sh"\n')
         except (SSHError, SecretError, ValueError) as e:
             return f"error: {t.name}: {e}"
         write(hide.feed(decode(b"", final=True)) + hide.held)

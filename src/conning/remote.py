@@ -68,6 +68,7 @@ def posix_live(job_id: str, command: str, *, cwd: str | None, env: dict[str, str
     if any(delimiter in line for line in lines):
         raise ValueError("command contains the heredoc delimiter")
     write = (
+        "set -e\numask 077\n"
         'mkdir -p "$HOME/.conning/jobs" && chmod 700 "$HOME/.conning" "$HOME/.conning/jobs"\n'
         f"{_job_base(job_id)}\n"
         f"cat > \"$b.live.sh\" <<'{delimiter}'\n" + "\n".join(lines) + f"\n{delimiter}\n"

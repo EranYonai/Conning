@@ -4,6 +4,7 @@ Every agent-facing command prints exactly what the matching MCP tool returns.
 """
 
 import argparse
+import functools
 import os
 import sys
 
@@ -43,20 +44,19 @@ def _run(args: argparse.Namespace) -> int:
     return admin.run_here(core, io, result, wait=args.wait, max_bytes=args.max_bytes, grep=args.grep)
 
 
+def _write(text: str) -> None:
+    sys.stdout.write(text)
+    sys.stdout.flush()
+
+
 def _run_live(args: argparse.Namespace) -> int:
     io = _io()
     if not io.tty:
         print("error: --tty needs a terminal; without one, leave it off")
         return 1
     command = {"cmd": " ".join(args.argv), "argv": None} if args.shell else {"cmd": None, "argv": args.argv}
-    shown = " ".join(args.argv)
-
-    def write(text: str) -> None:
-        sys.stdout.write(text)
-        sys.stdout.flush()
-
-    confirm = lambda t, words: admin.confirm_live(io, t, words, shown)  # noqa: E731
-    result = _core().live(args.target, **command, cwd=args.cwd, confirm=confirm, write=write)
+    confirm = functools.partial(admin.confirm_live, io)
+    result = _core().live(args.target, **command, cwd=args.cwd, confirm=confirm, write=_write)
     return _emit(result) if isinstance(result, str) else result
 
 

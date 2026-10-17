@@ -45,7 +45,10 @@ def test_a_job_streams_output_and_keeps_secrets_off_argv(core, transport):
 def test_a_job_starts_in_home_not_in_the_jobs_folder(core, transport):
     write_targets(win())
     out = core.run("win", cmd="(Get-Location).Path", wait=60)
-    assert out.startswith("exit=0") and out.splitlines()[-1] == str(transport.remote_home)
+    # On Windows the job is a WMI process with the real user profile, so only rule out the jobs folder.
+    assert out.startswith("exit=0") and ".conning" not in out.splitlines()[-1]
+    if sys.platform != "win32":
+        assert out.splitlines()[-1] == str(transport.remote_home)
 
 
 def test_the_stdin_script_ends_at_its_end_line_not_at_eof():

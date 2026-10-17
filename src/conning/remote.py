@@ -268,7 +268,8 @@ def pwsh_signal(job_id: str, signal: str) -> str:
 
 
 def pwsh_script(command: str, *, cwd: str | None, env: dict[str, str]) -> str:
-    lines = ["$ErrorActionPreference = 'Continue'"]
+    # No progress records: Windows PowerShell writes them to the log as CLIXML.
+    lines = ["$ErrorActionPreference = 'Continue'", "$ProgressPreference = 'SilentlyContinue'"]
     lines += [f"$env:{k} = '{v.replace(chr(39), chr(39) * 2)}'" for k, v in env.items()]
     if cwd:
         lines.append(f"Set-Location -LiteralPath '{cwd.replace(chr(39), chr(39) * 2)}'")

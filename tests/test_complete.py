@@ -104,7 +104,7 @@ def test_completion_scripts(shell, capsys):
     assert "conn __complete" in capsys.readouterr().out
 
 
-@pytest.mark.skipif(subprocess.run(["bash", "-c", "true"]).returncode != 0, reason="needs bash")
+@needs_sh
 def test_bash_script_passes_the_words(tmp_path):
     fake = tmp_path / "conn"
     fake.write_text('#!/bin/sh\nprintf "%s|" "$@"\necho\n')
@@ -144,12 +144,13 @@ def test_a_secret_that_cannot_be_resolved_gives_nothing(lab, monkeypatch):
     assert complete.remote("lab", [], "o") == []
 
 
+@needs_sh
 def test_bash_script_never_globs_candidates(tmp_path):
     (tmp_path / "local-file").write_text("")
     fake = tmp_path / "conn"
     fake.write_text("#!/bin/sh\necho '*'\n")
     fake.chmod(0o755)
-    script = complete.SHELLS["bash"] + 'COMP_WORDS=(conn run lab ""); COMP_CWORD=3; _conn; echo "${COMPREPLY[@]}"'
+    script = complete.SHELLS["bash"] + 'COMP_WORDS=(conn run lab ""); COMP_CWORD=3; _conn; echo "${COMPREPLY[@]}" $-'
     env = {"PATH": f"{tmp_path}:/usr/bin:/bin"}
     out = subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=env, cwd=tmp_path)
-    assert out.stdout.strip() == "*"
+    assert out.stdout.split()[0] == "*" and "f" not in out.stdout.split()[1]  # and globbing is back on

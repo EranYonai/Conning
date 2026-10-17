@@ -20,8 +20,11 @@ from conning.targets import load_targets
 
 SHELLS = {
     "bash": """_conn() {
-    mapfile -t COMPREPLY < <(conn __complete "${COMP_WORDS[@]:1:COMP_CWORD}" 2>/dev/null)
-    [[ ${#COMPREPLY[@]} == 1 && ${COMPREPLY[0]} == */ ]] && compopt -o nospace
+    local IFS=$'\n' opts=$-
+    set -f  # no glob on the candidates; bash 3.2 (macOS) has no mapfile
+    COMPREPLY=($(conn __complete "${COMP_WORDS[@]:1:COMP_CWORD}" 2>/dev/null))
+    [[ $opts == *f* ]] || set +f
+    [[ ${#COMPREPLY[@]} == 1 && ${COMPREPLY[0]} == */ ]] && type compopt &>/dev/null && compopt -o nospace
 }
 complete -F _conn conn
 """,

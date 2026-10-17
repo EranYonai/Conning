@@ -166,6 +166,7 @@ def test_bash_script_never_globs_candidates(tmp_path):
 def test_install_adds_the_line_once_and_doctor_stops_asking(shell, rc, line, tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("SHELL", shell)
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))  # Path.home() on Windows
     monkeypatch.delenv("ZDOTDIR", raising=False)
     assert "conn completion install" in complete.setup_hint()
     assert cli.main(["completion", "install"]) == 0

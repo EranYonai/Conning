@@ -2,6 +2,7 @@
 `pwsh` behind the fake transport; on Windows runners that includes the WMI launch itself."""
 
 import base64
+import subprocess
 import sys
 
 import pytest
@@ -37,7 +38,15 @@ def test_a_job_streams_output_and_keeps_secrets_off_argv(core, transport):
     assert all("s3cret" not in command for _, command, _ in transport.calls)  # argv carries no secret
     first = transport.calls[0][1]
     assert base64.b64decode(first.rsplit(" ", 1)[1]).decode("utf-16-le") == remote.PWSH_STDIN
+    assert transport.calls[0][2].endswith(f"\n{remote.PWSH_STDIN_END}\n".encode())
     assert not list(jobs_dir(transport).glob("*.env"))  # the wrapper deleted it after reading
+
+
+def test_the_stdin_script_ends_at_its_end_line_not_at_eof():
+    # Windows PowerShell over Windows OpenSSH may never see the EOF; nothing after the end line runs.
+    script = f"'first'\n'second'\n{remote.PWSH_STDIN_END}\n'never'\n".encode()
+    done = subprocess.run(remote.pwsh_stdin().split(), input=script, capture_output=True, timeout=60)
+    assert done.stdout.decode().split() == ["first", "second"], done.stderr
 
 
 def test_a_long_job_is_polled_for_new_lines_then_signalled(core):

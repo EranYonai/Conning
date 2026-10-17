@@ -65,7 +65,8 @@ class Core:
     def _script(self, t: Target, script: str, timeout: float = 60) -> tuple[int, bytes]:
         """Run one of Conning's own scripts on the target, sent over stdin."""
         if t.os == "windows":
-            return self.transport.exec(t, remote.pwsh_stdin(t.shell), stdin=script.encode(), timeout=timeout)
+            stdin = f"{script}\n{remote.PWSH_STDIN_END}\n".encode()
+            return self.transport.exec(t, remote.pwsh_stdin(t.shell), stdin=stdin, timeout=timeout)
         return self.transport.exec(t, "sh -s", stdin=script.encode(), timeout=timeout)
 
     def _one(self, name: str) -> tuple[Target | None, str | None]:

@@ -130,10 +130,13 @@ def pwsh_command(script: str, shell: str = "pwsh") -> str:
     return f"{exe} -NoProfile -NonInteractive -EncodedCommand {encoded}"
 
 
-# Runs the script that arrives on stdin, so a secret in it never shows up in a process listing.
+# Runs the script that arrives on stdin, so a secret in it never shows up in a process listing. It reads
+# up to an end line, not to end of input: Windows PowerShell over Windows OpenSSH may never see the EOF.
+PWSH_STDIN_END = "# CONNING-STDIN-END"
 PWSH_STDIN = (
-    "[Console]::InputEncoding = [Text.UTF8Encoding]::new($false); "
-    "$s = [Console]::In.ReadToEnd(); . ([scriptblock]::Create($s))"
+    "[Console]::InputEncoding = [Text.UTF8Encoding]::new($false); $s = [Collections.Generic.List[string]]::new(); "
+    f"while ((($l = [Console]::In.ReadLine()) -ne $null) -and $l -ne '{PWSH_STDIN_END}') {{ $s.Add($l) }}; "
+    '. ([scriptblock]::Create($s -join "`n"))'
 )
 PWSH_DETACH_FAILED = "CONNING-NO-DETACH"
 SIGNAL_RC = {"INT": 130, "TERM": 143, "KILL": 137}  # what a POSIX shell reports, so both read alike

@@ -90,6 +90,13 @@ def test_the_header_names_the_handle_only_when_output_is_hidden(core):
 
 
 @needs_sh
+def test_a_finished_job_leaves_no_files_on_the_target(core, transport):
+    shell_lab()
+    assert core.run("lab", cmd="seq 1 3") == "exit=0\n1\n2\n3"
+    assert list((transport.remote_home / ".conning" / "jobs").iterdir()) == []
+
+
+@needs_sh
 def test_cmd_string_and_cwd(core, transport):
     write_targets(lab())
     (transport.remote_home / "work").mkdir()

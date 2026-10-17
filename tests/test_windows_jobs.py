@@ -39,7 +39,13 @@ def test_a_job_streams_output_and_keeps_secrets_off_argv(core, transport):
     first = transport.calls[0][1]
     assert base64.b64decode(first.rsplit(" ", 1)[1]).decode("utf-16-le") == remote.PWSH_STDIN
     assert transport.calls[0][2].endswith(f"\n{remote.PWSH_STDIN_END}\n".encode())
-    assert not list(jobs_dir(transport).glob("*.env"))  # the wrapper deleted it after reading
+    assert list(jobs_dir(transport).iterdir()) == []  # env file read and deleted, the rest once fetched
+
+
+def test_a_job_starts_in_home_not_in_the_jobs_folder(core, transport):
+    write_targets(win())
+    out = core.run("win", cmd="(Get-Location).Path", wait=60)
+    assert out.startswith("exit=0") and out.splitlines()[-1] == str(transport.remote_home)
 
 
 def test_the_stdin_script_ends_at_its_end_line_not_at_eof():

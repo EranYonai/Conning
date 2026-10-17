@@ -99,6 +99,11 @@ def posix_signal(job_id: str, signal: str) -> str:
     )
 
 
+def posix_cleanup(job_id: str) -> str:
+    """Delete a finished job's files once its output is copied home."""
+    return f'{_job_base(job_id)}\nrm -f -- "$b".*\n'
+
+
 def parse_poll(output: bytes) -> tuple[int | None, bytes]:
     head, _, data = output.partition(b"\n")
     if not head.startswith(POLL_MARK.encode()):
@@ -192,7 +197,9 @@ if (Test-Path -LiteralPath "$b.sig") {
 def pwsh_start(job_id: str, command: str, *, cwd: str | None, timeout: int, env: dict[str, str]) -> str:
     """Start `command` detached on a Windows target. Prints the wrapper's pid, or PWSH_DETACH_FAILED
     when WMI can't create the process (the caller then runs the command synchronously)."""
-    job = "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)\n" + pwsh_script(command, cwd=cwd, env={})
+    # WMI starts the wrapper in the jobs folder; the command starts in $HOME, as over ssh.
+    job = "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)\nSet-Location -LiteralPath $HOME\n"
+    job += pwsh_script(command, cwd=cwd, env={})
     wrapper = PWSH_WRAPPER.replace("TIMEOUT_MS", str(int(timeout) * 1000))
     env_lines = "".join(f"{k}\t{_b64(v)}\n" for k, v in env.items())
     utf8 = "[Text.UTF8Encoding]::new($true)"  # a BOM, so Windows PowerShell reads -File scripts as UTF-8
@@ -250,6 +257,10 @@ def pwsh_poll(job_id: str, offset: int, limit: int) -> str:
         "}\n"
         "$o.Flush()\n"
     )
+
+
+def pwsh_cleanup(job_id: str) -> str:
+    return _pwsh_job_base(job_id) + f"Get-ChildItem -LiteralPath $d -Filter '{job_id}.*' | Remove-Item -Force\n"
 
 
 def pwsh_signal(job_id: str, signal: str) -> str:

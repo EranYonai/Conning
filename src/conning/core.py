@@ -3,6 +3,7 @@ is identical. Policy is enforced here, in code, on every call.
 """
 
 import codecs
+import contextlib
 import hashlib
 import re
 import shlex
@@ -301,7 +302,11 @@ class Core:
                 job.rc, job.finished = rc, self.clock()
                 audit.record("exit", target=job.target, job=job.id, rc=rc)
             job.save()
-            if job.rc is not None or self.clock() >= until:
+            if job.rc is not None:
+                with contextlib.suppress(SSHError, SecretError, ValueError):  # left behind is only clutter
+                    self._script(t, (remote.posix_cleanup if job.posix else remote.pwsh_cleanup)(job.id))
+                return
+            if self.clock() >= until:
                 return
             if len(data) < POLL_CHUNK:
                 self.sleep(self.poll_interval)

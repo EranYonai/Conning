@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.2 (2026-10-17)
+
+- `conn run -t` (`--tty`) runs a command live in a remote terminal, like `ssh -t`: spinners, progress
+  bars and colours draw as they happen, and you can answer prompts or press Ctrl-C. It is for a human at
+  a terminal (it refuses without one), runs on one Linux or macOS target, follows the same policy as
+  `conn run` (asking first when a command needs approval) and still redacts secrets as output streams.
+  Plain `conn run` and the MCP tools are unchanged.
+
 ## 0.6.1 (2026-10-17)
 
 - Target commands live under `conn targets`: `conn targets add`, `import`, `test`, `rename` and `rm`.

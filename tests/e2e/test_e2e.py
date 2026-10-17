@@ -152,7 +152,7 @@ def found(pattern: str, text: str) -> str:
 
 
 def add_live(conn: Conn, name: str, *extra: str) -> None:
-    conn("add", name, *SSHD, *extra)
+    conn("targets", "add", name, *SSHD, *extra)
     out = conn.human("approve", name, answers="y\n")
     assert f"{name} is live: linux bash" in out, out
 
@@ -170,25 +170,25 @@ def conn(tmp_path_factory):
     return c
 
 
-# conn add / approve / test / targets
+# conn targets add / approve / targets test / targets
 
 
 def test_an_agent_proposes_a_target_and_a_human_approves_it(tmp_path):
     c = Conn(tmp_path)
-    assert "saved as pending" in c("add", "new", *SSHD, "--auth", "key", "--key", KEY)
+    assert "saved as pending" in c("targets", "add", "new", *SSHD, "--auth", "key", "--key", KEY)
     assert re.search(r"new\s+linux\s+bash\s+user=conning-e2e .*mode=pending", c("targets"))
     assert c("run", "new", "uname", "-s").startswith("blocked  new  (target is pending")
     assert "needs a human" in c("approve", "new")
     out = c.human("approve", "new", answers="y\n")
     assert "host key ssh-ed25519" in out and "new is live: linux bash mode=ask" in out
     assert re.search(r"new\s+linux\s+bash\s+user=conning-e2e .*reach=ok", c("targets", "--check"))
-    assert re.search(r"new .*reach=ok", c("ls", "--check"))  # the alias
-    assert "new: ok, linux bash, host key pinned" in c("test", "new")
+    assert "new: ok, linux bash, host key pinned" in c("targets", "test", "new")
 
 
 def test_a_human_adds_a_target_and_is_asked_for_what_is_missing(tmp_path):
     c = Conn(tmp_path)
-    out = c.human("add", "asked", "--port", PORT, "--os", "linux", answers=f"127.0.0.1\n{USER}\nkey\n{KEY}\ny\n")
+    answers = f"127.0.0.1\n{USER}\nkey\n{KEY}\ny\n"
+    out = c.human("targets", "add", "asked", "--port", PORT, "--os", "linux", answers=answers)
     assert "host: " in out and "private key file: " in out and "asked is live: linux bash" in out
     assert c("run", "asked", "whoami").startswith("exit=0")
 
@@ -197,10 +197,10 @@ def test_a_typed_password_goes_to_the_keychain_and_follows_a_rename(tmp_path):
     pytest.importorskip("keyrings.alt")
     c = Conn(tmp_path)
     password = os.environ["CONNING_E2E_PASSWORD"]
-    out = c.human("add", "pw", *SSHD, "--auth", "password", answers=f"{password}\ny\n")
+    out = c.human("targets", "add", "pw", *SSHD, "--auth", "password", answers=f"{password}\ny\n")
     assert "secret=keychain:conning/pw" in out and "pw is live" in out
     assert "conning-e2e" in c("run", "pw", "whoami")
-    assert "renamed pw to pw2" in c.human("rename", "pw", "pw2")
+    assert "renamed pw to pw2" in c.human("targets", "rename", "pw", "pw2")
     assert 'secret = "keychain:conning/pw2"' in (tmp_path / "targets.toml").read_text()
     assert "conning-e2e" in c("run", "pw2", "whoami")
     for where in (tmp_path / "targets.toml", tmp_path / "state"):  # only the keychain holds it
@@ -212,7 +212,7 @@ def test_password_login_from_a_secret_reference(tmp_path):
     for name, password in (("pw", os.environ["CONNING_E2E_PASSWORD"]), ("bad", "wrong-password")):
         c = Conn(tmp_path / name)
         c.env["E2E_PW"] = password
-        c("add", name, *SSHD, "--auth", "password", "--secret", "env:E2E_PW")
+        c("targets", "add", name, *SSHD, "--auth", "password", "--secret", "env:E2E_PW")
         c.human("approve", name, answers="y\n")
         out = c("run", name, "whoami")
         assert (out.startswith("exit=0") and "conning-e2e" in out) == (name == "pw"), out
@@ -244,12 +244,12 @@ def test_like_tags_and_fan_out(tmp_path):
 
 def test_retry_a_target_that_could_not_be_reached(tmp_path):
     c = Conn(tmp_path)
-    c("add", "late", "--host", "127.0.0.1", "--port", "1", "--user", USER, "--auth", "key", "--key", KEY)
+    c("targets", "add", "late", "--host", "127.0.0.1", "--port", "1", "--user", USER, "--auth", "key", "--key", KEY)
     assert "nothing listens on 127.0.0.1:1" in c.human("approve", "late", answers="y\n")
     toml = tmp_path / "targets.toml"
     toml.write_text(toml.read_text().replace("port = 1\n", f"port = {PORT}\n"))  # the human fixes it
-    assert "needs a human" in c("add", "late", "--retry")
-    assert "late is live" in c.human("add", "late", "--retry", answers="y\n")
+    assert "already exists (probe it again with conn approve late" in c("targets", "add", "late", *SSHD)
+    assert "late is live" in c.human("approve", "late", answers="y\n")
 
 
 def test_the_target_file_is_fail_closed(tmp_path):
@@ -258,7 +258,7 @@ def test_the_target_file_is_fail_closed(tmp_path):
     assert "unknown key(s) bogus" in c("targets")
 
 
-# conn import
+# conn targets import
 
 
 def test_import_from_ssh_config(tmp_path):
@@ -269,7 +269,7 @@ def test_import_from_ssh_config(tmp_path):
         f"Host imp1\n  HostName 127.0.0.1\n  Port {PORT}\n  User {USER}\n  IdentityFile {KEY}\n  ForwardAgent yes\n\n"
         f"Host other\n  HostName 127.0.0.1\n"
     )
-    out = c("import", "--match", "imp*")
+    out = c("targets", "import", "--match", "imp*")
     assert "imp1: forwardagent in your ssh config; Conning drops it" in out
     assert "imported 1 target(s) as pending: imp1" in out
     assert "imp1 is live" in c.human("approve", "imp1", answers="y\n")
@@ -288,7 +288,7 @@ def test_a_target_behind_a_jump_host(tmp_path):
     c = Conn(tmp_path)
     add_live(c, "gw", "--auth", "key", "--key", KEY)
     inner = ("--host", "localhost", "--port", PORT, "--user", USER, "--auth", "key", "--key", KEY)
-    assert "saved as pending" in c("add", "inner", *inner, "--jump", "gw")
+    assert "saved as pending" in c("targets", "add", "inner", *inner, "--jump", "gw")
     out = c.human("approve", "inner", answers="y\n")
     assert f"{USER}@localhost:{PORT}  via gw" in out and "inner is live: linux bash" in out, out
     assert "conning-e2e" in c("run", "inner", "whoami")
@@ -296,7 +296,7 @@ def test_a_target_behind_a_jump_host(tmp_path):
     blob = tmp_path / "blob.txt"
     blob.write_text("through the bastion")
     assert "sha256 verified" in c("transfer", f"local:{blob}", f"inner:{REMOTE}-jumped.txt")
-    assert "inner jump through gw" in c("rm", "gw")
+    assert "inner jump through gw" in c("targets", "rm", "gw")
 
     known_hosts = tmp_path / "known_hosts"  # the bastion's pinned key no longer matches: no way in
     pinned = known_hosts.read_text()
@@ -306,8 +306,8 @@ def test_a_target_behind_a_jump_host(tmp_path):
     known_hosts.write_text(re.sub(r"^(conning-gw ssh-ed25519) \S+", rf"\1 {fake}", pinned, flags=re.M))
     close_shared_connection(c, "inner")
     close_shared_connection(c, "gw")
-    assert "possibly at jump host gw (check it with: conn test gw)" in c("run", "inner", "whoami")
-    assert "host key does not match" in c("test", "gw")
+    assert "possibly at jump host gw (check it with: conn targets test gw)" in c("run", "inner", "whoami")
+    assert "host key does not match" in c("targets", "test", "gw")
     known_hosts.write_text(pinned)
     assert "conning-e2e" in c("run", "inner", "whoami")
 
@@ -317,11 +317,11 @@ def test_each_hop_gets_its_own_password(tmp_path, gw_pw, inner_pw):
     c = Conn(tmp_path)
     password = os.environ["CONNING_E2E_PASSWORD"]
     c.env.update(GW_PW=password, IN_PW=password if inner_pw == "right" else "wrong-2")
-    c("add", "gw", *SSHD, "--auth", "password", "--secret", "env:GW_PW")
+    c("targets", "add", "gw", *SSHD, "--auth", "password", "--secret", "env:GW_PW")
     assert "gw is live" in c.human("approve", "gw", answers="y\n")
     c.env["GW_PW"] = password if gw_pw == "right" else "wrong-1"  # changed after gw went live
     inner = ("--host", "localhost", "--port", PORT, "--user", USER, "--jump", "gw")
-    c("add", "inner", *inner, "--auth", "password", "--secret", "env:IN_PW")
+    c("targets", "add", "inner", *inner, "--auth", "password", "--secret", "env:IN_PW")
     out = c.human("approve", "inner", answers="y\n")
     if gw_pw == "wrong":
         assert "no host key through gw: authentication failed" in out, out
@@ -344,7 +344,7 @@ def test_import_keeps_proxyjump(tmp_path):
         f"Host behind\n  HostName localhost\n  Port {PORT}\n  User {USER}\n  IdentityFile {KEY}\n"
         "  ProxyJump bastion\n"
     )
-    assert "imported 2 target(s) as pending: bastion, behind" in c("import")
+    assert "imported 2 target(s) as pending: bastion, behind" in c("targets", "import")
     assert 'jump = "bastion"' in (tmp_path / "targets.toml").read_text()
     assert "jump host bastion is pending" in c.human("approve", "behind", answers="y\n")
     assert "bastion is live" in c.human("approve", "bastion", answers="y\n")
@@ -407,7 +407,8 @@ def test_auto_mode_runs_anything_and_old_modes_say_how_to_recreate(tmp_path):
     assert "warn box has mode=auto" in c("doctor")
     toml.write_text(toml.read_text().replace('mode = "auto"', 'mode = "lease"'))
     out = c("targets")
-    assert "mode 'lease' is not supported" in out and "conn add box --host 127.0.0.1" in out and "--mode auto" in out
+    assert "mode 'lease' is not supported" in out and "conn targets add box --host 127.0.0.1" in out
+    assert "--mode auto" in out
 
 
 # conn read
@@ -475,23 +476,35 @@ def test_injected_secrets_never_reach_the_output(tmp_path):
     assert leaked.returncode == 1, leaked.stdout
 
 
-# conn rename / rm
+# conn targets rename / rm / mode
 
 
 def test_rename_keeps_the_pinned_key_and_rules(tmp_path):
     c = Conn(tmp_path)
     add_live(c, "old", "--auth", "key", "--key", KEY)
     c.human("allow", "old", "date", answers="y\n")
-    assert "renamed old to new" in c.human("rename", "old", "new")
+    assert "renamed old to new" in c.human("targets", "rename", "old", "new")
     assert c("run", "new", "date").startswith("exit=0")  # same pin, same rule, no prompt
-    assert "renaming a target needs a human" in c("rename", "new", "agent-name")
+    assert "renaming a target needs a human" in c("targets", "rename", "new", "agent-name")
 
 
 def test_rm(tmp_path):
     c = Conn(tmp_path)
     add_live(c, "gone", "--auth", "key", "--key", KEY)
-    assert "removed gone" in c("rm", "gone")
+    assert "removed gone" in c("targets", "rm", "gone")
     assert "error: unknown target(s) gone" in c("run", "gone", "true")
+
+
+def test_mode_auto_needs_a_human_and_ask_comes_back_from_anywhere(tmp_path):
+    c = Conn(tmp_path)
+    add_live(c, "m", "--auth", "key", "--key", KEY)
+    assert "status=pending_approval" in c("run", "m", "touch", f"{REMOTE}-m")
+    assert "turning on mode=auto needs a human" in c("targets", "mode", "m", "auto")
+    assert "mode=auto on m" in c.human("targets", "mode", "m", "auto", answers="y\n")
+    assert c("targets", "mode", "m").strip() == "m: mode=auto"
+    assert c("run", "m", "touch", f"{REMOTE}-m").startswith("exit=0")
+    assert "mode=ask on m" in c("targets", "mode", "m", "ask")  # taking trust away needs no terminal
+    assert "mode=ask" in c("targets", "m")
 
 
 # conn watch
@@ -575,11 +588,12 @@ def test_mcp_install_for_every_client(conn, tmp_path):
     out = c("mcp", "install", "claude")
     assert "claude is not on PATH; add the server with: claude mcp add" in out
     deny = json.loads((home / ".claude" / "settings.json").read_text())["permissions"]["deny"]
-    assert "Bash(ssh *)" in deny and "Bash(conn approve *)" in deny and "Bash(conn rename *)" in deny
+    assert "Bash(ssh *)" in deny and "Bash(conn approve *)" in deny and "Bash(conn targets rename *)" in deny
+    assert "Bash(conn targets mode *)" in deny
     assert "nothing to change" in c("mcp", "install", "claude")
     for client in ("codex", "cursor", "opencode", "pi"):
         assert "wrote" in c("mcp", "install", client), client
-    assert '["conn", "rename"]' in (home / ".codex" / "rules" / "conning.rules").read_text()
+    assert '["conn", "targets", "rename"]' in (home / ".codex" / "rules" / "conning.rules").read_text()
     entry = json.loads((home / ".cursor" / "mcp.json").read_text())["mcpServers"]["conning"]
 
     async def work(s):  # the server exactly as a client would start it
@@ -618,13 +632,13 @@ def test_help_and_version(conn):
 
     assert conn("--version").strip() == f"conning {__version__}"
     out = conn("help")
-    assert out.startswith("usage: conn") and "targets (ls)" in out
+    assert out.startswith("usage: conn") and "Targets (conn targets <verb>):\n  targets add " in out
     readme = (Path(__file__).parents[2] / "README.md").read_text()
     assert conn("help", "--markdown").strip() in readme
 
 
 def test_every_command_in_help_is_tested_here(conn):
-    commands = set(re.findall(r"^conn (\w+)", conn("help", "--markdown"), re.M))
+    commands = set(re.findall(r"^conn (targets \w+|\w+)", conn("help", "--markdown"), re.M))
     source = Path(__file__).read_text()
-    untested = sorted(c for c in commands if f'"{c}"' not in source)
-    assert len(commands) >= 16 and not untested, f"add an e2e test for: {untested}"
+    untested = sorted(c for c in commands if '"' + '", "'.join(c.split()) + '"' not in source)
+    assert len(commands) >= 17 and not untested, f"add an e2e test for: {untested}"

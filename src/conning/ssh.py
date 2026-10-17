@@ -222,7 +222,7 @@ def explain_ssh_failure(output: bytes) -> str:
     if "REMOTE HOST IDENTIFICATION HAS CHANGED" in text or "Host key verification failed" in text:
         return "host key does not match the pinned key (hard fail; a human must re-pin with conn approve)"
     if "Permission denied" in text:
-        return "authentication failed (check the user and secret with conn test)"
+        return "authentication failed (check the user and secret with conn targets test)"
     if "Connection refused" in text:
         return "connection refused (no SSH server listening on that port)"
     if "timed out" in text or "No route to host" in text:
@@ -315,7 +315,7 @@ def port_open(host: str, port: int, timeout: float = 3) -> bool:
 
 WINDOWS_SSH_FIX = """\
 {name}: no SSH server on {host}:{port}, and it answers on {ports}, so it looks like Windows.
-Ask the user to run this on the VM, in an admin PowerShell, then retry with: conn add {name} --retry
+Ask the user to run this on the VM, in an admin PowerShell, then probe it again with: conn approve {name}
   Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
   Start-Service sshd; Set-Service sshd -StartupType Automatic
 Windows older than 10 1809 / Server 2019: install Win32-OpenSSH from its GitHub releases (MSI) instead."""

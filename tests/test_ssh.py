@@ -182,7 +182,7 @@ def test_port_open(monkeypatch):
 def test_no_ssh_hint_spots_windows(monkeypatch):
     monkeypatch.setattr(ssh, "port_open", lambda host, port, timeout=3: port in (3389, 5985))
     hint = ssh.no_ssh_hint(target())
-    assert "looks like Windows" in hint and "3389, 5985" in hint and "conn add lab --retry" in hint
+    assert "looks like Windows" in hint and "3389, 5985" in hint and "conn approve lab" in hint
     monkeypatch.setattr(ssh, "port_open", lambda host, port, timeout=3: False)
     assert "nothing listens" in ssh.no_ssh_hint(target())
 

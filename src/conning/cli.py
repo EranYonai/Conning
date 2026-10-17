@@ -44,7 +44,7 @@ def _run(args: argparse.Namespace) -> int:
 def _add(a: argparse.Namespace) -> int:
     return admin.add(
         _core(), _io(), a.name, host=a.host, user=a.user, port=a.port, auth=a.auth, secret=a.secret, key=a.key,
-        os_name=a.os, mode=a.mode, tags=a.tag, retry=a.retry, like=a.like, jump=a.jump,
+        os_name=a.os, mode=a.mode, tags=a.tag, like=a.like, jump=a.jump,
     )  # fmt: skip
 
 
@@ -71,12 +71,13 @@ HANDLERS = {
         _core().read(a.id, wait=a.wait, range=a.range, grep=a.grep, signal=a.signal, max_bytes=a.max_bytes)
     ),
     "transfer": lambda a: _emit(_core().transfer(a.source, a.dest)),
-    "add": _add,
+    "targets add": _add,
+    "targets import": lambda a: admin.import_ssh_config(_io(), a.match),
+    "targets test": lambda a: admin.test(_core(), _io(), a.name),
+    "targets mode": lambda a: admin.set_mode(_io(), a.target, a.mode),
+    "targets rename": lambda a: admin.rename(_io(), a.old, a.new),
+    "targets rm": lambda a: admin.remove(_io(), a.name),
     "approve": lambda a: admin.approve(_core(), _io(), a.what, always=a.always),
-    "import": lambda a: admin.import_ssh_config(_io(), a.match),
-    "rm": lambda a: admin.remove(_io(), a.name),
-    "rename": lambda a: admin.rename(_io(), a.old, a.new),
-    "test": lambda a: admin.test(_core(), _io(), a.name),
     "allow": lambda a: admin.allow(_io(), a.target, a.words),
     "deny": lambda a: admin.deny(_io(), a.target, a.words),
     "watch": _watch,
@@ -89,18 +90,48 @@ HANDLERS = {
 }
 
 
-def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="conn", description="Conning: a control room for your agent's test machines.")
-    p.add_argument("--version", action="version", version=f"conning {__version__}")
-    sub = p.add_subparsers(dest="command", metavar="<command>")
+class Parser(argparse.ArgumentParser):
+    """The top-level parser: `conn -h` lists the commands in sections, not in one argparse list."""
 
-    def cmd(name: str, help: str, aliases=()) -> argparse.ArgumentParser:
-        sp = sub.add_parser(name, help=help, description=help, aliases=list(aliases))
-        sp.set_defaults(func=HANDLERS[name])
+    sections: dict[str, list[tuple[str, argparse.ArgumentParser, str]]]
+
+    def format_help(self) -> str:
+        width = max(len(name) for rows in self.sections.values() for name, _, _ in rows)
+        out = [self.format_usage(), self.description or "", ""]
+        for title, rows in self.sections.items():
+            out += [f"{title}:", *(f"  {name:<{width}}  {help}" for name, _, help in rows), ""]
+        out.append("conn <command> -h shows a command's options; --version prints the version.")
+        return "\n".join(out) + "\n"
+
+
+TARGET_VERBS = ("add", "import", "test", "mode", "rename", "rm")
+
+
+def build_parser() -> Parser:
+    p = Parser(prog="conn", description="Conning: a control room for your agent's test machines.")
+    p.add_argument("--version", action="version", version=f"conning {__version__}")
+    sub = p.add_subparsers(dest="command", metavar="<command>", parser_class=argparse.ArgumentParser)
+    p.sections = {}
+    section = ""
+
+    def cmd(name: str, help: str, under=sub) -> argparse.ArgumentParser:
+        full = f"targets {name}" if under is not sub else name
+        sp = under.add_parser(name, prog=f"conn {full}", help=help, description=help)
+        sp.set_defaults(func=HANDLERS[full])
+        p.sections.setdefault(section, []).append((full, sp, help))
         return sp
 
-    # Agent-facing: same output as the MCP tools.
-    sp = cmd("targets", "List targets: name, OS, shell, user, tags, mode. Never hosts or secrets.", ["ls"])
+    section = "Agent commands (same output as the MCP tools)"
+    sp = sub.add_parser(
+        "targets",
+        usage="conn targets [filter] [--check]\n       conn targets <verb> ...",
+        description="List targets (filter: 'tag:<tag>' or comma-separated names), or manage them with a verb.",
+    )
+    verbs = sp.add_subparsers(dest="verb", metavar="<verb>")
+    # `conn targets [filter]` is `conn targets ls`; main() inserts the hidden `ls` (no help, so unlisted).
+    sp = verbs.add_parser("ls", prog="conn targets", description="List targets. Never hosts or secrets.")
+    sp.set_defaults(func=HANDLERS["targets"])
+    p.sections[section] = [("targets", sp, "List targets: name, OS, shell, user, tags, mode. Never hosts or secrets.")]
     sp.add_argument("filter", nargs="?", help="'tag:<tag>' or comma-separated names")
     sp.add_argument("--check", action="store_true", help="probe reachability in parallel")
 
@@ -131,8 +162,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("source")
     sp.add_argument("dest")
 
-    # Target management. Without a terminal (an agent), a new target is saved as pending.
-    sp = cmd("add", "Add a target. Without a terminal it is saved as pending until a human approves it.")
+    section = "Targets (conn targets <verb>)"
+    sp = cmd("add", "Add a target. Without a terminal it is saved as pending until a human approves it.", verbs)
     sp.add_argument("name")
     sp.add_argument("--host")
     sp.add_argument("--user")
@@ -145,26 +176,29 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--os", choices=["linux", "windows", "darwin"])
     sp.add_argument("--mode", choices=MODES, default="ask")
     sp.add_argument("--tag", action="append", default=[])
-    sp.add_argument("--retry", action="store_true", help="probe an existing target again")
-    sp = cmd("approve", "Human only: make a pending target live, or allow a pending command a:<id>.")
-    sp.add_argument("what", help="<target> or a:<id>")
-    sp.add_argument("--always", action="store_true", help="for a:<id>: remember the command's first two words")
-    sp = cmd("import", "Import hosts from ~/.ssh/config as pending targets (unsafe options dropped).")
+    sp = cmd("import", "Import hosts from ~/.ssh/config as pending targets (unsafe options dropped).", verbs)
     sp.add_argument("--match", default="*")
-    cmd("rm", "Remove a target and its pinned host key.").add_argument("name")
-    sp = cmd("rename", "Human only: rename a target; its host keys, password and pending work follow.")
+    cmd("test", "Probe a target: reachability, OS, shell, pinned host key.", verbs).add_argument("name")
+    sp = cmd("mode", "Show or set the mode: ask, or auto (human only: anything runs without asking).", verbs)
+    sp.add_argument("target", help="a name, a comma list, or tag:<tag>")
+    sp.add_argument("mode", nargs="?", choices=MODES)
+    sp = cmd("rename", "Human only: rename a target; its host keys, password and pending work follow.", verbs)
     sp.add_argument("old")
     sp.add_argument("new")
-    cmd("test", "Probe a target: reachability, OS, shell, pinned host key.").add_argument("name")
+    cmd("rm", "Remove a target and its pinned host key.", verbs).add_argument("name")
 
-    sp = cmd("allow", "Human only: let a command run without asking (no words: list the rules).")
+    section = "Trust (human only)"
+    sp = cmd("approve", "Make a pending target live (or probe a live one again), or allow a pending command a:<id>.")
+    sp.add_argument("what", help="<target> or a:<id>")
+    sp.add_argument("--always", action="store_true", help="for a:<id>: remember the command's first two words")
+    sp = cmd("allow", "Let a command run without asking (no words: list the rules).")
     sp.add_argument("target", help="a name, a comma list, or tag:<tag>")
     sp.add_argument("words", nargs="*", help="the command's leading words, e.g. systemctl status")
-    sp = cmd("deny", "Remove an allow rule, so the command asks again.")
+    sp = cmd("deny", "Remove an allow rule, so the command asks again (no terminal needed).")
     sp.add_argument("target", help="a name, a comma list, or tag:<tag>")
     sp.add_argument("words", nargs="+")
 
-    # The human's live view.
+    section = "This machine"
     sp = cmd("watch", "Live control room: every command on every target, job output, approval prompts.")
     sp.add_argument("--history", type=int, default=10, help="show this many past events first")
     sp.add_argument("--no-prompt", action="store_true", help="show activity only; never ask")
@@ -204,15 +238,14 @@ def help_markdown() -> str:
             os.environ["COLUMNS"] = columns
 
 
-def _help_markdown(parser: argparse.ArgumentParser) -> str:
-    sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
-    out = ["```"]
-    for action in sub._choices_actions:
-        sp = sub.choices[action.dest]
-        usage = sp.format_usage().strip().removeprefix("usage: ").replace(" [-h]", "")
-        out += [usage, f"    {action.help}", ""]
-    out[-1] = "```"
-    return "\n".join(out)
+def _help_markdown(parser: Parser) -> str:
+    out = []
+    for title, rows in parser.sections.items():
+        out += [f"# {title}", ""]
+        for _, sp, help in rows:
+            usage = sp.format_usage().strip().removeprefix("usage: ").replace(" [-h]", "")
+            out += [usage, f"    {help}", ""]
+    return "```\n" + "\n".join(out).strip() + "\n```"
 
 
 RUN_VALUE_OPTIONS = ("--wait", "--timeout", "--cwd", "--max-bytes", "--grep")
@@ -257,6 +290,8 @@ def main(argv: list[str] | None = None) -> int:
     if argv[:1] == ["__complete"]:  # called by the completion script on every Tab; not in help
         return complete.main(argv[1:])
     parser = build_parser()
+    if argv[:1] == ["targets"] and not set(argv[1:2]) & {*TARGET_VERBS, "-h", "--help"}:
+        argv.insert(1, "ls")  # `conn targets [filter] [--check]` lists
     argv, rest = _split_remote_command(argv)
     args = parser.parse_args(argv)
     if rest is not None:

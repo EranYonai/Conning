@@ -62,7 +62,7 @@ keys and job output live on the `/conning` volume, and `conn` runs as that folde
 writes there stay yours on the host. On Docker Desktop for Mac, forward the agent with
 `-v /run/host-services/ssh-auth.sock:/ssh-agent` instead. Two things stay on your machine (D46):
 
-- **Approving.** `conn add`, `conn approve` and `conn allow` need your terminal. Install
+- **Approving.** `conn targets add`, `conn approve`, `conn allow` and turning on `auto` need your terminal. Install
   the CLI on the host and point it at the same folder: `CONNING_HOME=~/.config/conning conn approve a:1`.
   Approving in the agent client works from the container as usual.
 - **Secrets.** The OS keychain is not reachable from a container, so use `env:` or `op://`
@@ -89,6 +89,8 @@ in sync with the code.
 
 <!-- conn-help:start -->
 ```
+# Agent commands (same output as the MCP tools)
+
 conn targets [--check] [filter]
     List targets: name, OS, shell, user, tags, mode. Never hosts or secrets.
 
@@ -105,32 +107,41 @@ conn read [--wait WAIT] [--range RANGE] [--grep GREP] [--signal {INT,TERM,KILL}]
 conn transfer source dest
     Copy files: local:<path> to <target>:<path>, or back. sha256 checked.
 
-conn add [--host HOST] [--user USER] [--like TARGET] [--port PORT] [--jump TARGET]
-                [--auth {ssh-agent,key,password}] [--secret SECRET] [--key KEY]
-                [--os {linux,windows,darwin}] [--mode {ask,auto}] [--tag TAG] [--retry]
-                name
+# Targets (conn targets <verb>)
+
+conn targets add [--host HOST] [--user USER] [--like TARGET] [--port PORT]
+                        [--jump TARGET] [--auth {ssh-agent,key,password}] [--secret SECRET]
+                        [--key KEY] [--os {linux,windows,darwin}] [--mode {ask,auto}] [--tag TAG]
+                        name
     Add a target. Without a terminal it is saved as pending until a human approves it.
 
-conn approve [--always] what
-    Human only: make a pending target live, or allow a pending command a:<id>.
-
-conn import [--match MATCH]
+conn targets import [--match MATCH]
     Import hosts from ~/.ssh/config as pending targets (unsafe options dropped).
 
-conn rm name
-    Remove a target and its pinned host key.
-
-conn rename old new
-    Human only: rename a target; its host keys, password and pending work follow.
-
-conn test name
+conn targets test name
     Probe a target: reachability, OS, shell, pinned host key.
 
+conn targets mode target [{ask,auto}]
+    Show or set the mode: ask, or auto (human only: anything runs without asking).
+
+conn targets rename old new
+    Human only: rename a target; its host keys, password and pending work follow.
+
+conn targets rm name
+    Remove a target and its pinned host key.
+
+# Trust (human only)
+
+conn approve [--always] what
+    Make a pending target live (or probe a live one again), or allow a pending command a:<id>.
+
 conn allow target [words ...]
-    Human only: let a command run without asking (no words: list the rules).
+    Let a command run without asking (no words: list the rules).
 
 conn deny target words [words ...]
-    Remove an allow rule, so the command asks again.
+    Remove an allow rule, so the command asks again (no terminal needed).
+
+# This machine
 
 conn watch [--history HISTORY] [--no-prompt]
     Live control room: every command on every target, job output, approval prompts.
@@ -150,15 +161,15 @@ conn help [--markdown]
 <!-- conn-help:end -->
 
 A target is one login on one machine. To use the same machine as another user, add it again:
-`conn add lab-tester --like lab --user tester` copies the host, port, OS and tags and asks for the new
+`conn targets add lab-tester --like lab --user tester` copies the host, port, OS and tags and asks for the new
 user's password. `conn targets` shows which user each target uses.
 
 A target behind a bastion names it as its jump host: add the bastion as a target first, then
-`conn add lab --host 10.0.0.5 --user tester --jump gw`. Every hop gets its own login and its own pinned
-host key, and `conn import` keeps a `ProxyJump` to another host it imports. The bastion is a target the
+`conn targets add lab --host 10.0.0.5 --user tester --jump gw`. Every hop gets its own login and its own pinned
+host key, and `conn targets import` keeps a `ProxyJump` to another host it imports. The bastion is a target the
 agent can see too; in `ask` mode it can only run read-only commands there without you.
 
-A target you add with `conn add` from an agent session is saved as **pending**. It does nothing until
+A target you add with `conn targets add` from an agent session is saved as **pending**. It does nothing until
 the human runs `conn approve <name>`, which shows the host, the pinned host-key fingerprint and where
 the secret comes from.
 

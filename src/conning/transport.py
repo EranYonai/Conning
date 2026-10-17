@@ -70,7 +70,7 @@ class SSHTransport:
             if reason.startswith("connection refused"):
                 return ssh.no_ssh_hint(t)
             if reason == "ssh failed" and t.jump:  # ssh hides a jump host's own errors behind a shared connection
-                return f"ssh failed, possibly at jump host {t.jump} (check it with: conn test {t.jump})"
+                return f"ssh failed, possibly at jump host {t.jump} (check it with: conn targets test {t.jump})"
             return reason
         text = output.decode(errors="replace").strip()
         return f"exit={rc}: {text.splitlines()[-1] if text else 'no output'}"

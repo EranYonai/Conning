@@ -18,7 +18,7 @@ def test_readme_caches_current_cli_help():
 
 def test_targets_command(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("CONNING_HOME", str(tmp_path))
-    assert main(["ls"]) == 0
+    assert main(["targets"]) == 0
     assert "no targets" in capsys.readouterr().out
 
 

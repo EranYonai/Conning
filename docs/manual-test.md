@@ -56,7 +56,7 @@ export T_HOST=127.0.0.1 T_PORT=2222 T_USER=$(whoami) T_KEY=$S/userkey
 ## 3. The agent proposes a target; you approve it
 
 ```sh
-conn add lab --host $T_HOST --port $T_PORT --user $T_USER --auth key --key $T_KEY --tag demo < /dev/null
+conn targets add lab --host $T_HOST --port $T_PORT --user $T_USER --auth key --key $T_KEY --tag demo < /dev/null
 ```
 Expect: `lab saved as pending. It does nothing until a human runs: conn approve lab`. (`< /dev/null`
 makes it behave like an agent with no terminal.)
@@ -64,9 +64,9 @@ makes it behave like an agent with no terminal.)
 ```sh
 conn run lab uname -a        # expect: blocked  lab  (target is pending; ...)
 conn approve lab             # shows the host key fingerprint; type y
-conn ls --check              # expect: lab  linux  bash  user=<you>  tags=demo  mode=ask  reach=ok
+conn targets --check         # expect: lab  linux  bash  user=<you>  tags=demo  mode=ask  reach=ok
 ```
-If approving fails, the target stays pending and `conn ls` says why, e.g. `mode=pending (login check failed: ...)`.
+If approving fails, the target stays pending and `conn targets` says why, e.g. `mode=pending (login check failed: ...)`.
 
 ## 4. Approvals and "always allow"
 
@@ -176,9 +176,9 @@ conn allow lab make          # type y
 conn allow lab               # expect: lab: the built-in read-only list; rules: 'make' (and any "always")
 conn run lab df -h /         # expect: exit=0 right away (built-in list); watch shows run, start, exit, output
 conn deny lab make           # expect: 'make' now asks again on lab
-conn rename lab lab2          # expect: renamed lab to lab2; conn ls shows lab2 with its rules
+conn targets rename lab lab2  # expect: renamed lab to lab2; conn targets shows lab2 with its rules
 conn run lab2 uname -s       # expect: exit=0 with no host key prompt (the pin moved)
-conn rename lab2 lab         # back, for the steps below
+conn targets rename lab2 lab  # back, for the steps below
 ```
 
 Approvals in the client, with a real agent: `claude mcp add conning-dev -e CONNING_HOME=$CONNING_HOME

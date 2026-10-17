@@ -41,7 +41,7 @@ compdef _conn conn
 """,
     "fish": "complete -c conn -f -a '(conn __complete (commandline -opc)[2..-1] (commandline -ct) 2>/dev/null)'\n",
 }
-TARGET_FIRST = {"run", "test", "rm", "rename", "allow", "deny", "approve", "targets", "ls"}
+TARGET_FIRST = {"run", "test", "mode", "rm", "rename", "allow", "deny", "approve", "targets"}
 SECRETISH = re.compile(r"pass(wd|word)|pw=|token|secret|api.?key|authori[sz]ation|bearer|://[^/\s:@]+:[^/\s@]+@", re.I)
 HISTORY_LINES = 500
 TIMEOUT = 5
@@ -148,12 +148,17 @@ def remote(name: str, typed: list[str], cur: str, transport=None) -> list[str]:
 
 def complete(words: list[str], transport=None) -> list[str]:
     """Candidates for the last word, given the words before it (without `conn`)."""
-    from conning.cli import _run_options, build_parser
+    from conning.cli import TARGET_VERBS, _run_options, build_parser
 
     *before, cur = words or [""]
     if not before:
         sub = next(a for a in build_parser()._actions if hasattr(a, "choices") and a.choices)
         return [c for c in sub.choices if c.startswith(cur) and not c.startswith("_")]
+    if before == ["targets"]:  # a verb, or a target name to list
+        names = sorted(n for n in load_targets(paths.targets_file()) if n.startswith(cur))
+        return [v for v in TARGET_VERBS if v.startswith(cur)] + names
+    if before[0] == "targets" and before[1] in TARGET_VERBS:
+        before = before[1:]
     command = before[0]
     if command == "run":
         at = _run_options(before, 1)

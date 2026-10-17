@@ -3,6 +3,7 @@ is identical. Policy is enforced here, in code, on every call.
 """
 
 import codecs
+import contextlib
 import hashlib
 import re
 import shlex
@@ -65,7 +66,8 @@ class Core:
     def _script(self, t: Target, script: str, timeout: float = 60) -> tuple[int, bytes]:
         """Run one of Conning's own scripts on the target, sent over stdin."""
         if t.os == "windows":
-            return self.transport.exec(t, remote.pwsh_stdin(t.shell), stdin=script.encode(), timeout=timeout)
+            stdin = f"{script}\n{remote.PWSH_STDIN_END}\n".encode()
+            return self.transport.exec(t, remote.pwsh_stdin(t.shell), stdin=stdin, timeout=timeout)
         return self.transport.exec(t, "sh -s", stdin=script.encode(), timeout=timeout)
 
     def _one(self, name: str) -> tuple[Target | None, str | None]:
@@ -124,8 +126,7 @@ class Core:
                 return "unreachable"
             return "ok" if rc == 0 else "unreachable"
 
-        with ThreadPoolExecutor(max_workers=16) as pool:
-            reach = dict(zip((t.name for t in chosen), pool.map(probe, chosen), strict=True))
+        reach = dict(zip((t.name for t in chosen), _each(probe, chosen), strict=True))
         return listing(chosen, reach, notes)
 
     # --- run ----------------------------------------------------------------------------------
@@ -262,14 +263,12 @@ class Core:
         return job, None
 
     def _start_and_wait(self, targets, cmd, argv, cwd, wait, timeout, max_bytes, grep) -> str:
-        with ThreadPoolExecutor(max_workers=16) as pool:
-            started = list(pool.map(lambda t: self._start(t, cmd, argv, cwd, timeout), targets))
+        started = _each(lambda t: self._start(t, cmd, argv, cwd, timeout), targets)
         jobs = [j for j, _ in started if j]
         errors = [e for _, e in started if e]
         until = self.clock() + max(0, wait)
         if jobs:
-            with ThreadPoolExecutor(max_workers=16) as pool:
-                list(pool.map(lambda j: self._drain(j, until), jobs))
+            _each(lambda j: self._drain(j, until), jobs)
         if len(targets) == 1 and jobs:
             return self._job_result(jobs[0], max_bytes, grep)
         if len(targets) == 1:
@@ -303,7 +302,11 @@ class Core:
                 job.rc, job.finished = rc, self.clock()
                 audit.record("exit", target=job.target, job=job.id, rc=rc)
             job.save()
-            if job.rc is not None or self.clock() >= until:
+            if job.rc is not None:
+                with contextlib.suppress(SSHError, SecretError, ValueError):  # left behind is only clutter
+                    self._script(t, (remote.posix_cleanup if job.posix else remote.pwsh_cleanup)(job.id))
+                return
+            if self.clock() >= until:
                 return
             if len(data) < POLL_CHUNK:
                 self.sleep(self.poll_interval)
@@ -463,6 +466,15 @@ class Core:
         if rc != 0 or remote_sum != local_sum:
             return f"error: sha256 mismatch after copy (local {local_sum[:12]}, remote {remote_sum[:12] or '?'})"
         return f"ok 1 file, {_human(local_path.stat().st_size)}, sha256 verified"
+
+
+def _each(fn, items) -> list:
+    """`fn` over `items` in parallel. On Ctrl-C, stop at once rather than wait for the calls still running."""
+    pool = ThreadPoolExecutor(max_workers=16)
+    try:
+        return list(pool.map(fn, items))
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
 
 
 def _grep(text: str, pattern: str | None) -> str:

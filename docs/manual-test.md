@@ -219,4 +219,4 @@ On the VM, `Get-Process pwsh` shows no leftover job after each of these.
 [ -n "$S" ] && kill $(cat $S/sshd.pid)
 rm -rf "$CONNING_HOME" /tmp/conning-blob.*
 ```
-On the target, Conning's job files are under `~/.conning/jobs`.
+On the target, a running job's files are under `~/.conning/jobs`; they are deleted once the job ends and its output is fetched.

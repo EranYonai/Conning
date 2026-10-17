@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.1 (2026-10-17)
+## Unreleased
 
 - Listed in the official MCP Registry as `io.github.EranYonai/conning`: `server.json` describes the PyPI
   package and the GHCR image, and each release now publishes the listing after the package and the image.

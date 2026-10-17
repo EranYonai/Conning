@@ -112,7 +112,7 @@ def test_cli(core, monkeypatch, capsys):
     assert cli.main(["run", "-t", "lab", "echo", "hi"]) == 1
     assert "--tty needs a terminal" in capsys.readouterr().out
     monkeypatch.setattr(cli, "_io", lambda: FakeIO(tty=True))
-    assert cli.main(["run", "--tty", "lab", "echo", "-n", "hi"]) == 0
+    assert cli.main(["run", "--tty", "lab", "printf", "hi"]) == 0
     assert capsys.readouterr().out == "hi"
     assert cli.main(["run", "--tty", "--shell", "lab", "exit 4"]) == 4
     assert cli.main(["run", "-t", "tag:none", "true"]) == 1

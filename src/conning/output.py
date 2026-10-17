@@ -1,7 +1,8 @@
 """Token-lean results: the fact the agent branches on comes first, the bulk stays behind a handle.
 
 A result is a one-line header (`exit=1 dur=4.2s out=o:9f2 (812 lines, 41.0KB; showing 20+60)`)
-followed by the head and tail of the output, never more than `max_bytes` in total.
+followed by the head and tail of the output, never more than `max_bytes` in total. A short result
+is just `exit=0` and the output: no duration under a second, and no handle when nothing was cut.
 """
 
 DEFAULT_MAX_BYTES = 8192
@@ -26,6 +27,7 @@ def render(
     head: int = 20,
     tail: int = 60,
     handle: str | None = None,
+    name_handle: bool = False,
 ) -> str:
     """Header plus as much of `text` as fits: everything if small, else head + marker + tail."""
     max_bytes = clamp_max_bytes(max_bytes)
@@ -40,7 +42,8 @@ def render(
 
     def compose() -> str:
         omitted = len(lines) - len(head_part) - len(tail_part)
-        info = f"{header} ({len(lines)} lines, {_size(total_bytes)}; showing {len(head_part)}+{len(tail_part)})"
+        named = f" out={handle}" if name_handle and handle else ""
+        info = f"{header}{named} ({len(lines)} lines, {_size(total_bytes)}; showing {len(head_part)}+{len(tail_part)})"
         body = head_part + ([f"… {omitted} lines omitted ({where}) …"] if omitted else []) + tail_part
         return "\n".join([info, *body])
 

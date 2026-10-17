@@ -153,3 +153,29 @@ def test_bash_script_never_globs_candidates(tmp_path):
     env = {"PATH": f"{tmp_path}:/usr/bin:/bin"}
     out = subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=env, cwd=tmp_path)
     assert out.stdout.split()[0] == "*" and "f" not in out.stdout.split()[1]  # and globbing is back on
+
+
+@pytest.mark.parametrize(
+    ("shell", "rc", "line"),
+    [
+        ("/bin/zsh", ".zshrc", 'eval "$(conn completion zsh)"'),
+        ("/bin/bash", ".bashrc", 'eval "$(conn completion bash)"'),
+        ("/usr/bin/fish", ".config/fish/config.fish", "conn completion fish | source"),
+    ],
+)
+def test_install_adds_the_line_once_and_doctor_stops_asking(shell, rc, line, tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SHELL", shell)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("ZDOTDIR", raising=False)
+    assert "conn completion install" in complete.setup_hint()
+    assert cli.main(["completion", "install"]) == 0
+    assert (tmp_path / rc).read_text().count(line) == 1 and "added to" in capsys.readouterr().out
+    assert cli.main(["completion", "install"]) == 0
+    assert (tmp_path / rc).read_text().count(line) == 1 and "already on" in capsys.readouterr().out
+    assert complete.setup_hint() is None
+
+
+def test_install_needs_a_known_shell(monkeypatch, capsys):
+    monkeypatch.setenv("SHELL", "/bin/tcsh")
+    assert complete.setup_hint() is None
+    assert cli.main(["completion", "install"]) == 1 and "unknown shell" in capsys.readouterr().out

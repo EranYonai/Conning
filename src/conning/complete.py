@@ -11,8 +11,10 @@ writes to the audit log. History lines that look like they carry a secret are dr
 heuristic, not a guarantee, so a target can turn history off with `history = false`.
 """
 
+import os
 import re
 import shlex
+from pathlib import Path
 
 from conning import audit, paths
 from conning.targets import load_targets
@@ -44,6 +46,46 @@ SECRETISH = re.compile(r"pass(wd|word)|pw=|token|secret|api.?key|authori[sz]atio
 HISTORY_LINES = 500
 TIMEOUT = 5
 MARK = "--conning-live--"
+
+
+RC_FILES = {"bash": (".bashrc", ".bash_profile"), "zsh": (".zshrc",), "fish": (".config/fish/config.fish",)}
+
+
+def _rc() -> tuple[Path, str, bool] | None:
+    """The rc file of the user's shell, the line that turns completion on, and whether it already does."""
+    shell = Path(os.environ.get("SHELL", "")).name
+    if shell not in RC_FILES:
+        return None
+    home = Path(os.environ.get("ZDOTDIR") or Path.home()) if shell == "zsh" else Path.home()
+    rcs = [home / name for name in RC_FILES[shell]]
+    done = any("conn completion" in rc.read_text(errors="replace") for rc in rcs if rc.is_file())
+    line = "conn completion fish | source" if shell == "fish" else f'eval "$(conn completion {shell})"'
+    return rcs[0], line, done
+
+
+def setup_hint() -> str | None:
+    """For `conn doctor`: what to run when the user's shell doesn't turn completion on yet."""
+    rc = _rc()
+    return (
+        None if rc is None or rc[2] else f"Tab completion is off; run: conn completion install (adds a line to {rc[0]})"
+    )
+
+
+def install() -> int:
+    """`conn completion install`: add the line to the rc file of the user's shell, once."""
+    rc = _rc()
+    if rc is None:
+        print("error: unknown shell in $SHELL; run conn completion bash, zsh or fish and add it to your rc file")
+        return 1
+    path, line, done = rc
+    if done:
+        print(f"already on in {path}")
+        return 0
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(f"\n# Conning Tab completion\n{line}\n")
+    print(f"added to {path}: {line}\nopen a new terminal to use it")
+    return 0
 
 
 def remote_script(typed: list[str], cur: str, history: bool) -> str:

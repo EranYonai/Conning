@@ -82,7 +82,9 @@ HANDLERS = {
     "watch": _watch,
     "doctor": lambda a: doctor.doctor(_io()),
     "mcp": _mcp,
-    "completion": lambda a: print(complete.SHELLS[a.shell], end="") or 0,
+    "completion": lambda a: (
+        complete.install() if a.shell == "install" else print(complete.SHELLS[a.shell], end="") or 0
+    ),
     "help": lambda a: print(help_markdown() if a.markdown else build_parser().format_help()) or 0,
 }
 
@@ -180,8 +182,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("client", choices=list(install.PLANNERS))
     sp.add_argument("--dry-run", action="store_true", help="show what would change")
 
-    sp = cmd("completion", 'Print Tab completion for your shell; add eval "$(conn completion bash)" to your rc file.')
-    sp.add_argument("shell", choices=list(complete.SHELLS))
+    sp = cmd("completion", "Tab completion that reads the target; conn completion install turns it on in your shell.")
+    sp.add_argument("shell", choices=[*complete.SHELLS, "install"], help="install: add it to your shell's rc file")
 
     sp = cmd("help", "Show this help; --markdown prints the block cached in README.md.")
     sp.add_argument("--markdown", action="store_true")

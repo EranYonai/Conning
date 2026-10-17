@@ -593,6 +593,9 @@ def test_mcp_install_for_every_client(conn, tmp_path):
 
 def test_tab_completes_from_the_target(conn, tmp_path):
     assert "conn __complete" in conn("completion", "bash")
+    conn.env["SHELL"] = "/bin/bash"
+    assert "added to" in conn("completion", "install") and "already on" in conn("completion", "install")
+    assert 'eval "$(conn completion bash)"' in (conn.home / "home" / ".bashrc").read_text()
     history = tmp_path / "history"
     history.write_text("systemctl restart nginx\nmysql --password=x\n")
     assert "sha256" in conn("transfer", f"local:{history}", "free:.bash_history")

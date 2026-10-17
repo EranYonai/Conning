@@ -46,7 +46,7 @@ def test_select_by_tag(tmp_path):
     "bad, message",
     [
         ('[x]\nhost="h"\nuser="u"\nmodee="ask"', "unknown key"),
-        ('[x]\nhost="h"\nuser="u"\nmode="yolo"', "mode must be"),
+        ('[x]\nhost="h"\nuser="u"\nmode="yolo"', "only ask or auto"),
         ('[x]\nhost="h"', "'user' is required"),
         ('[x]\nhost="h"\nuser="u"\nauth="password"', "needs a secret reference"),
         ('[x]\nhost="h"\nuser="u"\nallow=["pytest"]', "'allow' must be"),
@@ -56,6 +56,19 @@ def test_select_by_tag(tmp_path):
 def test_fails_closed(tmp_path, bad, message):
     with pytest.raises(TargetFileError, match=message):
         load_targets(write(tmp_path, bad))
+
+
+@pytest.mark.parametrize("old, new", [("observe", "ask"), ("lease", "auto")])
+def test_an_old_mode_names_the_command_that_recreates_the_target(tmp_path, old, new):
+    entry = f'[lab]\nhost="10.0.0.5"\nuser="tester"\nport=2222\njump="gw"\ntags=["x y"]\nmode="{old}"\n'
+    with pytest.raises(TargetFileError) as e:
+        load_targets(write(tmp_path, '[gw]\nhost="gw"\nuser="u"\n' + entry))
+    assert str(e.value).endswith(
+        f"[lab]: mode '{old}' is not supported, only ask or auto. Delete this entry and recreate the target: "
+        f"conn add lab --host 10.0.0.5 --user tester --port 2222 --jump gw --mode {new} --tag 'x y'"
+    )
+    with pytest.raises(TargetFileError, match=r"--mode ask, then copy back its allow, safe by hand$"):
+        load_targets(write(tmp_path, '[x]\nhost="h"\nuser="u"\nmode="observe"\nallow=[["df"]]\nsafe=false\n'))
 
 
 def test_missing_file_means_no_targets(tmp_path):

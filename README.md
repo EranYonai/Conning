@@ -9,7 +9,7 @@ your own laptop. Conning holds the keys to your lab VMs and gives the agent four
 commands and move files there. The agent never sees a password, and you approve anything risky.
 
 > **Status: pre-alpha (M2 done).** Running commands, long jobs, remote file reads and transfers
-> work over OpenSSH, with pinned host keys, password or key auth, approvals and leases. You can approve
+> work over OpenSSH, with pinned host keys, password or key auth and approvals. You can approve
 > in the agent client, in `conn watch` or with `conn approve`; `conn doctor` checks your setup. Long
 > jobs run detached on Linux, macOS and Windows targets, and `conn mcp install` sets up claude, codex,
 > cursor, opencode or pi. See
@@ -25,7 +25,7 @@ reach the machines it tests on:
   Secrets are resolved inside Conning at the last moment and never returned by any tool.
 - **Lean results.** Exit code first, output capped at 8 KB by default (the agent may ask for more, up
   to a ceiling), with a handle to page the rest. Fan-out to many targets collapses identical results.
-- **Guardrails in code, not in the prompt.** Each target has a mode (`observe`, `ask`, `lease`).
+- **Guardrails in code, not in the prompt.** Each target has a mode, `ask` or `auto`.
   Commands outside the allowlist wait for your approval; "always allow" remembers two words, so
   `systemctl status` never lets through `systemctl stop`.
 - **Plain OpenSSH underneath.** Linux and Windows (OpenSSH + PowerShell 7), pinned host keys,
@@ -58,7 +58,7 @@ keys and job output live on the `/conning` volume, and `conn` runs as that folde
 writes there stay yours on the host. On Docker Desktop for Mac, forward the agent with
 `-v /run/host-services/ssh-auth.sock:/ssh-agent` instead. Two things stay on your machine (D46):
 
-- **Approving.** `conn add`, `conn approve`, `conn lease` and `conn allow` need your terminal. Install
+- **Approving.** `conn add`, `conn approve` and `conn allow` need your terminal. Install
   the CLI on the host and point it at the same folder: `CONNING_HOME=~/.config/conning conn approve a:1`.
   Approving in the agent client works from the container as usual.
 - **Secrets.** The OS keychain is not reachable from a container, so use `env:` or `op://`
@@ -103,7 +103,7 @@ conn transfer source dest
 
 conn add [--host HOST] [--user USER] [--like TARGET] [--port PORT] [--jump TARGET]
                 [--auth {ssh-agent,key,password}] [--secret SECRET] [--key KEY]
-                [--os {linux,windows,darwin}] [--mode {observe,ask,lease}] [--tag TAG] [--retry]
+                [--os {linux,windows,darwin}] [--mode {ask,auto}] [--tag TAG] [--retry]
                 name
     Add a target. Without a terminal it is saved as pending until a human approves it.
 
@@ -117,13 +117,10 @@ conn rm name
     Remove a target and its pinned host key.
 
 conn rename old new
-    Human only: rename a target; its host keys, password, lease and pending work follow.
+    Human only: rename a target; its host keys, password and pending work follow.
 
 conn test name
     Probe a target: reachability, OS, shell, pinned host key.
-
-conn lease [--minutes MINUTES] name
-    Human only: give a target a full shell for a time box (1-60 minutes).
 
 conn allow target [words ...]
     Human only: let a command run without asking (no words: list the rules).
@@ -152,7 +149,7 @@ user's password. `conn targets` shows which user each target uses.
 A target behind a bastion names it as its jump host: add the bastion as a target first, then
 `conn add lab --host 10.0.0.5 --user tester --jump gw`. Every hop gets its own login and its own pinned
 host key, and `conn import` keeps a `ProxyJump` to another host it imports. The bastion is a target the
-agent can see too, so give it `--mode observe` if the agent should only pass through it.
+agent can see too; in `ask` mode it can only run read-only commands there without you.
 
 A target you add with `conn add` from an agent session is saved as **pending**. It does nothing until
 the human runs `conn approve <name>`, which shows the host, the pinned host-key fingerprint and where
@@ -181,9 +178,8 @@ takes it back. Every command, answer and rule change lands in a hash-chained aud
 
 | Mode | What the agent can do | Default for |
 |---|---|---|
-| `observe` | The built-in read-only list and allowlisted commands only; everything else is refused. | targets tagged `shared` or `prod` |
-| `ask` | The built-in read-only list and allowlisted commands run; anything else waits for your approval. | new lab targets |
-| `lease` | Any command, for a time box you grant (15 min default, 60 max). | never by default |
+| `ask` | The built-in read-only list and allowlisted commands run; anything else waits for your approval. | every new target |
+| `auto` | Any command runs without asking, until you set the mode back to `ask`. `conn doctor` warns about it. | never by default |
 
 - No tool returns a secret, adds a live target or changes policy.
 - Secrets travel over stdin or the SSH channel's env, never argv. Output is redacted before it is saved.

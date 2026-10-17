@@ -67,7 +67,7 @@ def test_timeout_ends_the_job_tree(core):
 def test_without_wmi_it_runs_while_connected(core, transport, monkeypatch):
     write_targets(win())
     monkeypatch.setattr(remote, "pwsh_start", lambda *a, **k: f"'{remote.PWSH_DETACH_FAILED} no WMI'; exit 98\n")
-    out = core.run("win", argv=["Write-Output", "sync"], wait=30)
+    out = core.run("win", argv=["Write-Output", "sync"], wait=30, grep="sync")  # grep names the handle
     assert out.startswith("exit=0") and "sync" in out
     job = Job.load(out.split("out=o:")[1].split()[0])
     assert job.detached is False and job.posix is False

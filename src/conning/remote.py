@@ -21,11 +21,7 @@ def _job_base(job_id: str) -> str:
     return f"b={JOBS_DIR}/{job_id}"
 
 
-def posix_start(job_id: str, command: str, *, cwd: str | None, timeout: int, env: dict[str, str]) -> str:
-    """Start `command` detached. Prints the job's pid. `env` values travel inside this script, not argv."""
-    delimiter = f"CONNING_EOF_{job_id}"
-    if delimiter in command:
-        raise ValueError("command contains the heredoc delimiter")
+def _posix_body(command: str, cwd: str | None) -> list[str]:
     # A non-interactive ssh session skips the login profile, so tools installed under ~/.local/bin
     # or /opt are "not found". Adopt the PATH a login shell would have; its other output is dropped.
     show = '\'printf "\\nCONNING_PATH=%s\\n" "$PATH"\''
@@ -36,7 +32,15 @@ def posix_start(job_id: str, command: str, *, cwd: str | None, timeout: int, env
     ]
     if cwd:
         body.append(f"cd -- {shlex.quote(cwd)} || exit 97")
-    body.append(command)
+    return [*body, command]
+
+
+def posix_start(job_id: str, command: str, *, cwd: str | None, timeout: int, env: dict[str, str]) -> str:
+    """Start `command` detached. Prints the job's pid. `env` values travel inside this script, not argv."""
+    delimiter = f"CONNING_EOF_{job_id}"
+    if delimiter in command:
+        raise ValueError("command contains the heredoc delimiter")
+    body = _posix_body(command, cwd)
     exports = "".join(f"export {k}={shlex.quote(v)}\n" for k, v in env.items())
     return (
         "set -e\n"
@@ -52,6 +56,23 @@ def posix_start(job_id: str, command: str, *, cwd: str | None, timeout: int, env
         ' echo $? > "$1.rc"\' conning "$b" "$group" "$limit" > /dev/null 2>&1 < /dev/null &\n'
         'echo "$!"\n'
     )
+
+
+def posix_live(job_id: str, command: str, *, cwd: str | None, env: dict[str, str]) -> tuple[str, str]:
+    """For `conn run --tty`, whose stdin is the human's keyboard: a script (sent first, on stdin) that
+    writes the command and its env to a file only the user can read, and the short command that runs
+    that file in the pty. The file deletes itself as it starts."""
+    delimiter = f"CONNING_EOF_{job_id}"
+    exports = [f"export {k}={shlex.quote(v)}" for k, v in env.items()]
+    lines = ['rm -f -- "$0"', *exports, *_posix_body(command, cwd)]
+    if any(delimiter in line for line in lines):
+        raise ValueError("command contains the heredoc delimiter")
+    write = (
+        'mkdir -p "$HOME/.conning/jobs" && chmod 700 "$HOME/.conning" "$HOME/.conning/jobs"\n'
+        f"{_job_base(job_id)}\n"
+        f"cat > \"$b.live.sh\" <<'{delimiter}'\n" + "\n".join(lines) + f"\n{delimiter}\n"
+    )
+    return write, f'sh "$HOME/.conning/jobs/{job_id}.live.sh"'
 
 
 def posix_poll(job_id: str, offset: int, limit: int) -> str:

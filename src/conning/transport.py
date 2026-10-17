@@ -3,6 +3,7 @@
 import shutil
 import subprocess
 import threading
+from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
 
@@ -14,6 +15,8 @@ class Transport(Protocol):
     def exec(
         self, t: Target, command: str, *, stdin: bytes | None = None, timeout: float = 60
     ) -> tuple[int, bytes]: ...
+
+    def live(self, t: Target, command: str, write: Callable[[bytes], None]) -> int: ...
 
     def copy(self, t: Target, local: Path, remote_path: str, *, upload: bool) -> tuple[int, bytes]: ...
 
@@ -38,6 +41,9 @@ class SSHTransport:
 
     def exec(self, t: Target, command: str, *, stdin: bytes | None = None, timeout: float = 60) -> tuple[int, bytes]:
         return ssh.run(self._conn(t), command, stdin=stdin, timeout=timeout)
+
+    def live(self, t: Target, command: str, write: Callable[[bytes], None]) -> int:
+        return ssh.live(self._conn(t), command, write)
 
     def copy(self, t: Target, local: Path, remote_path: str, *, upload: bool) -> tuple[int, bytes]:
         scp = shutil.which("scp")

@@ -97,7 +97,7 @@ in sync with the code.
 conn targets [--check] [filter]
     List targets: name, OS, shell, user, tags, mode. Never hosts or secrets.
 
-conn run [--wait WAIT] [--timeout TIMEOUT] [--cwd CWD] [--shell]
+conn run [--wait WAIT] [--timeout TIMEOUT] [--cwd CWD] [--shell] [-t]
                 [--max-bytes MAX_BYTES] [--grep GREP]
                 target [argv ...]
     Run a command on one target, a list, or tag:<tag>. Exit code first.

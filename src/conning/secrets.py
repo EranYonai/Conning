@@ -83,19 +83,36 @@ def _keyring():
     return keyring
 
 
-def redact(text: str, secrets: list[str]) -> str:
-    """Replace every secret, and its base64, URL-encoded and hex forms, with [REDACTED]."""
+def _forms(secrets: list[str]) -> list[str]:
+    """Every secret and its base64, URL-encoded and hex forms, longest first."""
+    forms = set()
     for secret in secrets:
         if len(secret) < 4:
             continue
         raw = secret.encode()
-        forms = {
-            secret,
-            base64.b64encode(raw).decode(),
-            base64.b64encode(raw).decode().rstrip("="),
-            urllib.parse.quote(secret, safe=""),
-            raw.hex(),
-        }
-        for form in sorted(forms, key=len, reverse=True):
-            text = text.replace(form, REDACTED)
+        b64 = base64.b64encode(raw).decode()
+        forms |= {secret, b64, b64.rstrip("="), urllib.parse.quote(secret, safe=""), raw.hex()}
+    return sorted(forms, key=len, reverse=True)
+
+
+def redact(text: str, secrets: list[str]) -> str:
+    """Replace every secret, and its base64, URL-encoded and hex forms, with [REDACTED]."""
+    for form in _forms(secrets):
+        text = text.replace(form, REDACTED)
     return text
+
+
+class Redactor:
+    """`redact` for output that arrives in pieces: it holds back only a tail that could start a secret."""
+
+    def __init__(self, secrets: list[str]):
+        self.forms = _forms(secrets)
+        self.held = ""
+
+    def feed(self, text: str) -> str:
+        text = self.held + text
+        for form in self.forms:
+            text = text.replace(form, REDACTED)
+        keep = max((k for f in self.forms for k in range(1, len(f)) if text.endswith(f[:k])), default=0)
+        self.held = text[len(text) - keep :]
+        return text[: len(text) - keep]

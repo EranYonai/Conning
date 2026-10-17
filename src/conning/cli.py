@@ -33,12 +33,31 @@ def _run(args: argparse.Namespace) -> int:
     if not args.argv:
         print(f"error: give the command after the target, e.g. conn run {args.target} uname -a")
         return 1
+    if args.tty:
+        return _run_live(args)
     common = dict(cwd=args.cwd, wait=args.wait, timeout=args.timeout, max_bytes=args.max_bytes, grep=args.grep)
     core, io = _core(), _io()
     core.notify = not io.tty  # a human at this terminal is asked right here, no pop-up needed
     command = {"cmd": " ".join(args.argv)} if args.shell else {"argv": args.argv}
     result = core.run(args.target, **command, **common)
     return admin.run_here(core, io, result, wait=args.wait, max_bytes=args.max_bytes, grep=args.grep)
+
+
+def _run_live(args: argparse.Namespace) -> int:
+    io = _io()
+    if not io.tty:
+        print("error: --tty needs a terminal; without one, leave it off")
+        return 1
+    command = {"cmd": " ".join(args.argv), "argv": None} if args.shell else {"cmd": None, "argv": args.argv}
+    shown = " ".join(args.argv)
+
+    def write(text: str) -> None:
+        sys.stdout.write(text)
+        sys.stdout.flush()
+
+    confirm = lambda t, words: admin.confirm_live(io, t, words, shown)  # noqa: E731
+    result = _core().live(args.target, **command, cwd=args.cwd, confirm=confirm, write=write)
+    return _emit(result) if isinstance(result, str) else result
 
 
 def _add(a: argparse.Namespace) -> int:
@@ -141,6 +160,7 @@ def build_parser() -> Parser:
     sp.add_argument("--timeout", type=int, default=3600, help="kill the command after this many seconds")
     sp.add_argument("--cwd")
     sp.add_argument("--shell", action="store_true", help="send the words as one shell string (pipes etc. always ask)")
+    sp.add_argument("-t", "--tty", action="store_true", help="for a human: live in a terminal (spinners, prompts)")
     sp.add_argument(
         "--max-bytes",
         type=int,
@@ -249,7 +269,7 @@ def _help_markdown(parser: Parser) -> str:
 
 
 RUN_VALUE_OPTIONS = ("--wait", "--timeout", "--cwd", "--max-bytes", "--grep")
-RUN_FLAGS = ("--shell",)
+RUN_FLAGS = ("--shell", "-t", "--tty")
 
 
 def _run_options(argv: list[str], i: int) -> int:

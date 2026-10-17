@@ -2,6 +2,7 @@
 is identical. Policy is enforced here, in code, on every call.
 """
 
+import codecs
 import hashlib
 import re
 import shlex
@@ -13,7 +14,7 @@ from pathlib import Path
 from conning import audit, notify, paths, remote
 from conning.output import DEFAULT_MAX_BYTES, clamp_max_bytes, render, render_fanout
 from conning.policy import is_allowed, is_safe, policy_argv
-from conning.secrets import SecretError, redact
+from conning.secrets import Redactor, SecretError, redact
 from conning.ssh import SSHError
 from conning.state import Approval, Job, new_id, problems
 from conning.targets import Target, TargetFileError, listing, load_targets, select
@@ -181,6 +182,54 @@ class Core:
             return "\n".join(notes)
         result = self._start_and_wait(runnable, cmd, argv, cwd, wait, timeout, max_bytes, grep)
         return "\n".join([*notes, result]) if notes else result
+
+    def live(
+        self,
+        target: str,
+        cmd: str | None,
+        argv: list[str] | None,
+        cwd: str | None,
+        confirm: Callable[[Target, list[str] | None], bool],
+        write: Callable[[str], None],
+    ) -> int | str:
+        """`conn run --tty`: one POSIX target, in a pty, its output streamed to `write` (redacted) as it comes.
+        Policy is run's; a command that would wait for approval is put to `confirm`, the human at this
+        terminal. Returns the exit code, or an error line."""
+        try:
+            chosen, err = self._pick(target)
+        except TargetFileError as e:
+            return f"error: {e}"
+        if err:
+            return err
+        if len(chosen) != 1:
+            return "error: --tty runs on one target"
+        t = chosen[0]
+        if t.os == "windows":
+            return f"error: --tty needs a Linux or macOS target; {t.name} is Windows"
+        words = policy_argv(cmd, argv)
+        decision = self._decide(t, words)
+        shown = cmd if cmd is not None else shlex.join(argv or [])
+        audit.record("run", target=t.name, command=shown, decision=decision, cwd=cwd, tty=True)
+        if decision == "blocked":
+            return f"error: {t.name} is pending; human runs: conn approve {t.name}"
+        if decision == "approve" and not confirm(t, words):
+            return 1
+        job_id = new_id()
+        command = self._command_for(t, cmd, argv)
+        decode = codecs.getincrementaldecoder("utf-8")(errors="replace").decode
+        try:
+            hide = Redactor(self.transport.secrets(t))  # resolved first: output that can't be redacted is never shown
+            prepare, run_file = remote.posix_live(job_id, command, cwd=cwd, env=self.transport.inject_env(t))
+            rc, out = self._script(t, prepare)
+            if rc != 0:
+                return f"error: {t.name}: {self.transport.explain(t, rc, out)}"
+            audit.record("start", target=t.name, job=job_id, command=command, tty=True)
+            rc = self.transport.live(t, run_file, lambda chunk: write(hide.feed(decode(chunk))))
+        except (SSHError, SecretError, ValueError) as e:
+            return f"error: {t.name}: {e}"
+        write(hide.feed(decode(b"", final=True)) + hide.held)
+        audit.record("exit", target=t.name, job=job_id, rc=rc)
+        return rc
 
     def _start(self, t: Target, cmd: str | None, argv: list[str] | None, cwd: str | None, timeout: int):
         """Start one job. Returns (Job, None) or (None, error line)."""

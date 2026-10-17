@@ -18,6 +18,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -215,6 +216,17 @@ def run(conn: Connection, remote_command: str, *, stdin: bytes | None = None, ti
     except subprocess.TimeoutExpired as e:
         return 124, (e.output or b"") + b"\n[conning: ssh call timed out]"
     return done.returncode, done.stdout
+
+
+def live(conn: Connection, remote_command: str, write: Callable[[bytes], None]) -> int:
+    """Run one command in a remote pty (`ssh -tt`) with this terminal as its stdin, handing the output to
+    `write` as it arrives. Returns the exit code; 255 means ssh itself failed."""
+    argv = ["-tt" if a == "-T" else a for a in conn.argv]
+    command = [*argv, "--", remote_command]
+    with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=conn.env) as p:
+        while chunk := os.read(p.stdout.fileno(), 1 << 16):
+            write(chunk)
+    return p.returncode
 
 
 def explain_ssh_failure(output: bytes) -> str:

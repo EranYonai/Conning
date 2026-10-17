@@ -378,6 +378,14 @@ def test_a_human_running_a_command_is_asked_right_there(conn):
     assert "needs approval on lab" in out and "exit=0" in out
 
 
+def test_a_human_runs_live_in_a_pty(conn):
+    script = "tty; printf 'loading\\rdone\\n'; printf 'name: '; read x; echo \"got $x\""
+    out = conn.human("run", "-t", "lab", "sh", "-c", script, answers="a\nhandler\n")
+    assert "needs approval on lab" in out and "/dev/pts/" in out
+    assert "loading\rdone" in out and "got handler" in out
+    assert "--tty needs a terminal" in conn("run", "-t", "lab", "tty")
+
+
 def test_run_options(conn):
     assert conn("run", "--cwd", "/tmp", "lab", "pwd").splitlines()[1] == "/tmp"
     assert "shell syntax always asks" in conn("run", "--shell", "lab", "echo hi | tr a-z A-Z")

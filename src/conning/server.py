@@ -108,12 +108,12 @@ def build_server(core: Core | None = None, *, approve_in_client: bool = True) ->
         message = _safe(lambda: approval_question(core, target, cmd, argv, cwd))
         return Elicit(message, Decision) if message and not message.startswith("error:") else None
 
-    @server.tool()
+    @server.tool(structured_output=False)
     def targets(filter: str | None = None, check: bool = False) -> str:
         """List targets (name, os, shell, tags, mode). filter: 'tag:<tag>' or names. check: probe reachability."""
         return _safe(lambda: core.targets(filter, check))
 
-    @server.tool()
+    @server.tool(structured_output=False)
     async def run(
         target: str,
         cmd: str | None = None,
@@ -132,7 +132,7 @@ def build_server(core: Core | None = None, *, approve_in_client: bool = True) ->
         )
         return await apply_answer(answer, core, result, wait, max_bytes, grep)
 
-    @server.tool()
+    @server.tool(structured_output=False)
     def read(
         id: str,
         wait: int = 0,
@@ -145,7 +145,7 @@ def build_server(core: Core | None = None, *, approve_in_client: bool = True) ->
         or <target>:<path>. signal: INT|TERM|KILL stops a job."""
         return _safe(lambda: core.read(id, wait, range, grep, signal, max_bytes))
 
-    @server.tool()
+    @server.tool(structured_output=False)
     def transfer(source: str, dest: str) -> str:
         """Copy a file or directory between local:<path> and <target>:<path>. Files are verified by sha256."""
         return _safe(lambda: core.transfer(source, dest))

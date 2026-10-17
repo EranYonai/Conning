@@ -1,0 +1,43 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.EranYonai/conning",
+  "title": "Conning",
+  "description": "Run commands on your remote test machines over SSH without the agent ever seeing a secret.",
+  "repository": {
+    "url": "https://github.com/EranYonai/Conning",
+    "source": "github"
+  },
+  "websiteUrl": "https://github.com/EranYonai/Conning",
+  "version": "0.5.1",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "conning",
+      "version": "0.5.1",
+      "runtimeHint": "uvx",
+      "transport": { "type": "stdio" },
+      "packageArguments": [{ "type": "positional", "value": "mcp" }]
+    },
+    {
+      "registryType": "oci",
+      "identifier": "ghcr.io/eranyonai/conning:0.5.1",
+      "transport": { "type": "stdio" },
+      "runtimeArguments": [
+        { "type": "named", "name": "--network", "value": "host" },
+        {
+          "type": "named",
+          "name": "--volume",
+          "value": "{conning_home}:/conning",
+          "variables": {
+            "conning_home": {
+              "description": "Conning's config folder on your machine: targets, pinned host keys, approvals",
+              "format": "filepath",
+              "default": "~/.config/conning",
+              "isRequired": true
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

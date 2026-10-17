@@ -1,5 +1,7 @@
 # Conning
 
+<!-- mcp-name: io.github.EranYonai/conning -->
+
 <p align="center"><img src="docs/brand/handler-hero.svg" alt="Handler, the Conning mascot: a friendly cartoon glove working puppet strings on three lab VMs" width="360"></p>
 
 **A control room for your agent's test machines.** Your agent (Claude Code, Codex, Cursor...) stays on

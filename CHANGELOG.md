@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.1 (2026-10-17)
+
+- Listed in the official MCP Registry as `io.github.EranYonai/conning`: `server.json` describes the PyPI
+  package and the GHCR image, and each release now publishes the listing after the package and the image.
+
 ## 0.5.0 (2026-10-16)
 
 - Jump hosts: a target can name another target as its jump host (`conn add lab --host 10.0.0.5

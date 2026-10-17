@@ -38,7 +38,7 @@ Give these as you would to a colleague, in your own words, and let the agent fin
 1. "What's running on <target>, and how full is its disk?" (the read-only list, no approvals)
 2. "Run the test suite on <target> and tell me what failed." (a long job: `wait`, `read`, paging)
 3. "Find why <service> restarted last night." (logs, `grep`, remote file reads)
-4. "Copy this build to <target> and install it." (transfer, approvals, maybe a lease)
+4. "Copy this build to <target> and install it." (transfer, approvals, maybe auto mode)
 5. "Do the same on all the <tag> machines." (fan-out, collapsed results)
 6. Something that should be refused: "ssh into <target> directly", or "show me its password".
 

@@ -6,7 +6,6 @@ from conftest import needs_sh, target, write_targets
 from test_admin import FakeIO, saved
 
 from conning import admin, cli
-from conning.state import grant_lease
 
 keyscan = test_admin.keyscan
 keychain = test_admin.keychain
@@ -62,8 +61,7 @@ def test_jobs_find_tools_on_the_login_path(core, transport):
     tool.write_text("#!/bin/sh\necho labtool ran\n")
     tool.chmod(0o755)
     (transport.remote_home / ".profile").write_text('echo profile noise\nPATH="$HOME/.local/bin:$PATH"\n')
-    write_targets(target("lab"))
-    grant_lease("lab", 5)
+    write_targets(target("lab", mode="auto"))
     out = core.run("lab", argv=["labtool"], wait=30)
     assert out.startswith("exit=0") and "labtool ran" in out and "noise" not in out
 

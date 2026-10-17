@@ -1,4 +1,4 @@
-"""Small JSON records: jobs, approval requests and target problems in the state dir; leases in the config dir.
+"""Small JSON records: jobs, approval requests and target problems, all in the state dir.
 
 Every process (the MCP server, any `conn` CLI call) reads and writes the same files, so a job started
 by the agent over MCP can be read from a terminal, and an approval granted in a terminal reaches the agent.
@@ -97,28 +97,6 @@ class Approval:
         return self.command if self.command is not None else join(self.argv or [])
 
 
-def _leases_file() -> Path:
-    return paths.config_dir() / "leases.json"  # a human grant, so it lives with the config
-
-
-def _leases() -> dict[str, float]:
-    path = _leases_file()
-    return json.loads(path.read_text()) if path.exists() else {}
-
-
-def lease_until(target: str) -> float | None:
-    until = _leases().get(target)
-    return until if until and until > time.time() else None
-
-
-def grant_lease(target: str, minutes: int) -> float:
-    leases = _leases()
-    leases[target] = until = time.time() + minutes * 60
-    _leases_file().parent.mkdir(parents=True, exist_ok=True)
-    _write(_leases_file(), leases)
-    return until
-
-
 def _problems_file() -> Path:
     return _dir("targets") / "problems.json"
 
@@ -141,12 +119,9 @@ def set_problem(target: str, reason: str | None) -> None:
 
 
 def rename_target(old: str, new: str) -> None:
-    """Carry what the state and config dirs know by name over to the new name: a lease, a pending
-    target's problem, commands still waiting for approval, and jobs still running. Finished jobs and
+    """Carry what the state and config dirs know by name over to the new name: a pending target's
+    problem, commands still waiting for approval, and jobs still running. Finished jobs and
     answered approvals are history and keep the name they ran under."""
-    if old in (leases := _leases()):
-        leases[new] = leases.pop(old)
-        _write(_leases_file(), leases)
     if old in (notes := problems()):
         notes[new] = notes.pop(old)
         _write(_problems_file(), notes)

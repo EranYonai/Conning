@@ -106,7 +106,7 @@ def test_codex_appends_the_server_and_writes_rules(fake_home):
     assert tomllib.loads(text)["mcp_servers"]["conning"] == {"command": "/opt/bin/conn", "args": ["mcp"]}
     rules = (fake_home / ".codex" / "rules" / "conning.rules").read_text()
     assert 'prefix_rule(pattern = ["ssh"], decision = "forbidden"' in rules
-    assert 'pattern = ["conn", "lease"]' in rules
+    assert 'pattern = ["conn", "rename"]' in rules
     assert io.said[-1].startswith("note: codex rules cover commands only")
     io = FakeIO(tty=False)
     install.install(io, "codex")

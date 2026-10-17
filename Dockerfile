@@ -33,7 +33,8 @@ FROM python:3.13-slim
 LABEL org.opencontainers.image.title="Conning" \
       org.opencontainers.image.description="A control room for your agent's test machines: run commands on remote targets without the agent seeing a secret." \
       org.opencontainers.image.source="https://github.com/EranYonai/Conning" \
-      org.opencontainers.image.licenses="Apache-2.0"
+      org.opencontainers.image.licenses="Apache-2.0" \
+      io.modelcontextprotocol.server.name="io.github.EranYonai/conning"
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends openssh-client \

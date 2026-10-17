@@ -70,3 +70,24 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+  # The listing in the official MCP Registry (D51), once the package and the image it points to are out.
+  # The registry trusts this repository's GitHub OIDC token for the io.github.EranYonai namespace.
+  registry:
+    needs: [publish, image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Point server.json at this release
+        run: |
+          v=${GITHUB_REF_NAME#v}
+          jq --arg v "$v" '.version = $v | .packages |= map(if .registryType == "oci"
+            then .identifier = (.identifier | sub(":[^:]*$"; ":" + $v)) else .version = $v end)' \
+            server.json > server.tmp && mv server.tmp server.json
+      - run: curl -sSL https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1/mcp-publisher_linux_amd64.tar.gz | tar xz mcp-publisher
+      - run: ./mcp-publisher login github-oidc
+      # PyPI can take a minute to show a new version, and the registry checks it there.
+      - run: for i in 1 2 3 4 5; do ./mcp-publisher publish && exit 0; sleep 30; done; exit 1

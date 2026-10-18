@@ -440,3 +440,13 @@ def test_unresolvable_secret_is_an_error_not_a_crash(core, transport):
     assert core.read(f"j:{job_id}").startswith("status=running")  # nothing shown that could not be redacted
     transport.secret_error = None
     assert "two" in core.read(f"j:{job_id}", wait=10)
+
+
+def test_clixml_split_across_polls_is_held_back_until_complete():
+    from conning.core import POLL_CHUNK, _without_clixml
+
+    assert _without_clixml(b'#< CLIXML\r\nhi\r\n<Objs Version="1"><Obj/></Objs>\r\nbye', False) == (b"hi\r\nbye", 51)
+    assert _without_clixml(b'hi\n<Objs Version="1"><Obj', False) == (b"hi\n", 3)
+    assert _without_clixml(b'hi\n<Objs Version="1"><Obj', True) == (b'hi\n<Objs Version="1"><Obj', 25)
+    full = b"<Objs Version=" + b"x" * (POLL_CHUNK - 14)  # a block bigger than a poll is let through
+    assert _without_clixml(full, False) == (full, POLL_CHUNK)

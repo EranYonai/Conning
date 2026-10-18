@@ -120,3 +120,10 @@ def test_scripts_validate_their_inputs():
             remote.pwsh_start("abc", "x", cwd=None, timeout=5, env={}).split("$b.run.ps1\" '")[1].split("'")[0]
         ).decode()
     )
+
+
+def test_windows_powershell_progress_xml_is_dropped(core):
+    write_targets(win())
+    noise = '<Objs Version="1.1.0.1" xmlns="x"><Obj S="progress" RefId="0"><AV>Preparing</AV></Obj></Objs>'
+    cmd = f"[Console]::Out.Write(\"#< CLIXML`n\"); 'hi'; [Console]::Out.Write('{noise}')"
+    assert core.run("win", cmd=cmd, wait=60).splitlines()[1:] == ["hi"]

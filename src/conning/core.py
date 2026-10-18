@@ -295,10 +295,14 @@ class Core:
                 rc, data = remote.parse_poll(out) if rc_ssh == 0 else (None, b"")
             except (SSHError, SecretError, ValueError):
                 rc, data, rc_ssh = None, b"", 255
+            final = rc is not None and len(data) < POLL_CHUNK
+            used = len(data)
+            if data and not job.posix:
+                data, used = _without_clixml(data, final)
             if data:
                 job.append(redact(data.decode(errors="replace"), hide))
-                job.fetched += len(data)
-            if rc is not None and len(data) < POLL_CHUNK:
+            job.fetched += used
+            if final:
                 job.rc, job.finished = rc, self.clock()
                 audit.record("exit", target=job.target, job=job.id, rc=rc)
             job.save()
@@ -466,6 +470,19 @@ class Core:
         if rc != 0 or remote_sum != local_sum:
             return f"error: sha256 mismatch after copy (local {local_sum[:12]}, remote {remote_sum[:12] or '?'})"
         return f"ok 1 file, {_human(local_path.stat().st_size)}, sha256 verified"
+
+
+CLIXML = re.compile(rb"#< CLIXML\r?\n|<Objs Version=.*?</Objs>(?:\r?\n)?", re.S)
+
+
+def _without_clixml(data: bytes, final: bool) -> tuple[bytes, int]:
+    """Windows PowerShell writes progress records into redirected output as CLIXML: drop them. A block
+    not yet complete is left for the next poll. Returns (output, bytes of `data` used)."""
+    used = len(data)
+    start = data.rfind(b"<Objs Version=")
+    if not final and start != -1 and b"</Objs>" not in data[start:] and (start or used < POLL_CHUNK):
+        used = start
+    return CLIXML.sub(b"", data[:used]), used
 
 
 def _each(fn, items) -> list:

@@ -292,8 +292,7 @@ class Core:
         if t is None or job.rc is not None or not job.detached:
             return
         while True:
-            if (saved := Job.load(job.id)) and saved.rc is not None:  # another process finished it, files gone
-                vars(job).update(vars(saved))
+            if _finished_elsewhere(job):
                 return
             try:
                 hide = self.transport.secrets(t)  # resolved first: output that can't be redacted is never shown
@@ -313,6 +312,8 @@ class Core:
             if final:
                 job.rc, job.finished = rc, self.clock()
                 audit.record("exit", target=job.target, job=job.id, rc=rc)
+            elif _finished_elsewhere(job):  # finished while we polled: don't save "running" over it
+                return
             job.save()
             if job.rc is not None:
                 with contextlib.suppress(SSHError, SecretError, ValueError):  # left behind is only clutter
@@ -478,6 +479,14 @@ class Core:
         if rc != 0 or remote_sum != local_sum:
             return f"error: sha256 mismatch after copy (local {local_sum[:12]}, remote {remote_sum[:12] or '?'})"
         return f"ok 1 file, {_human(local_path.stat().st_size)}, sha256 verified"
+
+
+def _finished_elsewhere(job: Job) -> bool:
+    """True, with `job` updated, if another process (say `conn approve`) recorded the exit and cleaned up."""
+    if (saved := Job.load(job.id)) and saved.rc is not None:
+        vars(job).update(vars(saved))
+        return True
+    return False
 
 
 CLIXML = re.compile(rb"#< CLIXML\r?\n|<Objs Version=.*?</Objs>(?:\r?\n)?", re.S)

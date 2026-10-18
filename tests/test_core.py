@@ -464,3 +464,21 @@ def test_a_job_another_process_finished_is_not_polled_again(core, transport):
     calls = len(transport.calls)
     core._drain(stale, core.clock() + 5)
     assert stale.rc == 0 and len(transport.calls) == calls
+
+
+@needs_sh
+def test_a_job_finished_elsewhere_during_a_poll_is_not_saved_as_running(core, transport):
+    shell_lab()
+    stale = Job.load(core.run("lab", cmd="sleep 5", wait=0).split("job=j:")[1].split()[0])
+    real = transport.exec
+
+    def exec_(t, command, *, stdin=None, timeout=60):
+        answer = real(t, command, stdin=stdin, timeout=timeout)  # still running on the target
+        other = Job.load(stale.id)
+        other.rc, other.finished = 0, other.started + 1  # meanwhile another process saw it end
+        other.save()
+        return answer
+
+    transport.exec = exec_
+    core._drain(stale, core.clock() + 5)
+    assert stale.rc == 0 and Job.load(stale.id).rc == 0

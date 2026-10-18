@@ -3,6 +3,7 @@ is identical. Policy is enforced here, in code, on every call.
 """
 
 import codecs
+import contextlib
 import hashlib
 import re
 import shlex
@@ -65,7 +66,10 @@ class Core:
     def _script(self, t: Target, script: str, timeout: float = 60) -> tuple[int, bytes]:
         """Run one of Conning's own scripts on the target, sent over stdin."""
         if t.os == "windows":
-            return self.transport.exec(t, remote.pwsh_stdin(t.shell), stdin=script.encode(), timeout=timeout)
+            if remote.PWSH_STDIN_END in script.splitlines():
+                raise ValueError(f"script contains the line {remote.PWSH_STDIN_END}")
+            stdin = f"{script}\n{remote.PWSH_STDIN_END}\n".encode()
+            return self.transport.exec(t, remote.pwsh_stdin(t.shell), stdin=stdin, timeout=timeout)
         return self.transport.exec(t, "sh -s", stdin=script.encode(), timeout=timeout)
 
     def _one(self, name: str) -> tuple[Target | None, str | None]:
@@ -124,8 +128,7 @@ class Core:
                 return "unreachable"
             return "ok" if rc == 0 else "unreachable"
 
-        with ThreadPoolExecutor(max_workers=16) as pool:
-            reach = dict(zip((t.name for t in chosen), pool.map(probe, chosen), strict=True))
+        reach = dict(zip((t.name for t in chosen), _each(probe, chosen), strict=True))
         return listing(chosen, reach, notes)
 
     # --- run ----------------------------------------------------------------------------------
@@ -249,10 +252,13 @@ class Core:
                     return None, f"error: {t.name}: {self.transport.explain(t, rc, out)}"
                 job.append(redact(out.decode(errors="replace"), self.transport.secrets(t)))
                 job.rc, job.finished = rc, self.clock()
+                with contextlib.suppress(SSHError):  # the scripts written before WMI failed
+                    self._script(t, remote.pwsh_cleanup(job.id))
             elif rc != 0:
                 return None, f"error: {t.name}: {self.transport.explain(t, rc, out)}"
             else:
-                job.pid = out.decode(errors="replace").strip().splitlines()[-1] if out.strip() else None
+                lines = out.decode(errors="replace").split()
+                job.pid = next((w for w in reversed(lines) if w.isdigit()), None)  # past any stderr noise
         except (SSHError, SecretError, ValueError) as e:
             return None, f"error: {t.name}: {e}"
         job.save()
@@ -262,14 +268,12 @@ class Core:
         return job, None
 
     def _start_and_wait(self, targets, cmd, argv, cwd, wait, timeout, max_bytes, grep) -> str:
-        with ThreadPoolExecutor(max_workers=16) as pool:
-            started = list(pool.map(lambda t: self._start(t, cmd, argv, cwd, timeout), targets))
+        started = _each(lambda t: self._start(t, cmd, argv, cwd, timeout), targets)
         jobs = [j for j, _ in started if j]
         errors = [e for _, e in started if e]
         until = self.clock() + max(0, wait)
         if jobs:
-            with ThreadPoolExecutor(max_workers=16) as pool:
-                list(pool.map(lambda j: self._drain(j, until), jobs))
+            _each(lambda j: self._drain(j, until), jobs)
         if len(targets) == 1 and jobs:
             return self._job_result(jobs[0], max_bytes, grep)
         if len(targets) == 1:
@@ -289,6 +293,8 @@ class Core:
         if t is None or job.rc is not None or not job.detached:
             return
         while True:
+            if _finished_elsewhere(job):
+                return
             try:
                 hide = self.transport.secrets(t)  # resolved first: output that can't be redacted is never shown
                 poll = remote.posix_poll if job.posix else remote.pwsh_poll
@@ -296,16 +302,27 @@ class Core:
                 rc, data = remote.parse_poll(out) if rc_ssh == 0 else (None, b"")
             except (SSHError, SecretError, ValueError):
                 rc, data, rc_ssh = None, b"", 255
+            full = len(data) == POLL_CHUNK
+            final = rc is not None and not full
+            used = len(data)
+            if data and not job.posix:
+                data, used = _without_clixml(data, final)
             if data:
                 job.append(redact(data.decode(errors="replace"), hide))
-                job.fetched += len(data)
-            if rc is not None and len(data) < POLL_CHUNK:
+            job.fetched += used
+            if final:
                 job.rc, job.finished = rc, self.clock()
                 audit.record("exit", target=job.target, job=job.id, rc=rc)
-            job.save()
-            if job.rc is not None or self.clock() >= until:
+            elif _finished_elsewhere(job):  # finished while we polled: don't save "running" over it
                 return
-            if len(data) < POLL_CHUNK:
+            job.save()
+            if job.rc is not None:
+                with contextlib.suppress(SSHError, SecretError, ValueError):  # left behind is only clutter
+                    self._script(t, (remote.posix_cleanup if job.posix else remote.pwsh_cleanup)(job.id))
+                return
+            if self.clock() >= until:
+                return
+            if not full:
                 self.sleep(self.poll_interval)
 
     def _job_result(self, job: Job, max_bytes: int, grep: str | None) -> str:
@@ -463,6 +480,42 @@ class Core:
         if rc != 0 or remote_sum != local_sum:
             return f"error: sha256 mismatch after copy (local {local_sum[:12]}, remote {remote_sum[:12] or '?'})"
         return f"ok 1 file, {_human(local_path.stat().st_size)}, sha256 verified"
+
+
+def _finished_elsewhere(job: Job) -> bool:
+    """True, with `job` updated, if another process (say `conn approve`) recorded the exit and cleaned up."""
+    if (saved := Job.load(job.id)) and saved.rc is not None:
+        vars(job).update(vars(saved))
+        return True
+    return False
+
+
+CLIXML = re.compile(rb"#< CLIXML\r?\n|<Objs Version=.*?</Objs>(?:\r?\n)?", re.S)
+
+
+def _progress_only(m: re.Match) -> bytes:
+    """Keep a block holding anything but progress records (an error, user output that looks alike)."""
+    kinds = set(re.findall(rb'<Obj S="(\w+)"', m[0]))
+    return b"" if m[0].startswith(b"#") or kinds == {b"progress"} else m[0]
+
+
+def _without_clixml(data: bytes, final: bool) -> tuple[bytes, int]:
+    """Windows PowerShell writes progress records into redirected output as CLIXML: drop them. A block
+    not yet complete is left for the next poll. Returns (output, bytes of `data` used)."""
+    used = len(data)
+    start = data.rfind(b"<Objs Version=")
+    if not final and start != -1 and b"</Objs>" not in data[start:] and (start or used < POLL_CHUNK):
+        used = start
+    return CLIXML.sub(_progress_only, data[:used]), used
+
+
+def _each(fn, items) -> list:
+    """`fn` over `items` in parallel. On Ctrl-C, stop at once rather than wait for the calls still running."""
+    pool = ThreadPoolExecutor(max_workers=16)
+    try:
+        return list(pool.map(fn, items))
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
 
 
 def _grep(text: str, pattern: str | None) -> str:

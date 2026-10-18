@@ -19,6 +19,14 @@ def test_remote_rejects_unsafe_ids_and_signals():
         remote.parse_poll(b"garbage\n")
 
 
+def test_a_windows_poll_reply_survives_clixml_on_stderr():
+    # Windows PowerShell may write progress CLIXML to stderr, and ssh merges it into the reply.
+    noise = b'#< CLIXML\r\n<Objs Version="1.1.0.1"><Obj S="progress"/></Objs>'
+    assert remote.parse_poll(noise + b"\nCONNING-RC 0 5\nhello" + noise) == (0, b"hello")
+    assert remote.parse_poll(b"CONNING-RC - 0\n" + noise) == (None, b"")
+    assert remote.parse_poll(b"CONNING-RC 3\nposix output") == (3, b"posix output")
+
+
 def test_pwsh_scripts():
     script = remote.pwsh_script("Get-Item x", cwd="C:\\it's", env={"TOKEN": "a'b"})
     assert "$env:TOKEN = 'a''b'" in script and "Set-Location -LiteralPath 'C:\\it''s'" in script

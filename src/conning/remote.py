@@ -99,12 +99,22 @@ def posix_signal(job_id: str, signal: str) -> str:
     )
 
 
+def posix_cleanup(job_id: str) -> str:
+    """Delete a finished job's files once its output is copied home."""
+    return f'{_job_base(job_id)}\nrm -f -- "$b".*\n'
+
+
 def parse_poll(output: bytes) -> tuple[int | None, bytes]:
-    head, _, data = output.partition(b"\n")
-    if not head.startswith(POLL_MARK.encode()):
-        raise ValueError(f"unexpected poll output: {head[:200]!r}")
-    rc = head.split()[-1].decode()
-    return (None if rc == "-" else int(rc)), data
+    """The rc and output after the mark line; noise before it is skipped, and a byte count, when
+    given (Windows), drops noise after."""
+    at = output.find(POLL_MARK.encode() + b" ")
+    if at == -1:
+        raise ValueError(f"unexpected poll output: {output[:200]!r}")
+    head, _, data = output[at:].partition(b"\n")
+    fields = head.decode(errors="replace").split()
+    if len(fields) == 3:
+        data = data[: int(fields[2])]
+    return (None if fields[1] == "-" else int(fields[1])), data
 
 
 def posix_read_file(path: str, range_: str | None) -> str:
@@ -130,10 +140,14 @@ def pwsh_command(script: str, shell: str = "pwsh") -> str:
     return f"{exe} -NoProfile -NonInteractive -EncodedCommand {encoded}"
 
 
-# Runs the script that arrives on stdin, so a secret in it never shows up in a process listing.
+# Runs the script that arrives on stdin, so a secret in it never shows up in a process listing. It reads
+# up to an end line, not to end of input: Windows PowerShell over Windows OpenSSH may never see the EOF.
+PWSH_STDIN_END = "# CONNING-STDIN-END"
 PWSH_STDIN = (
-    "[Console]::InputEncoding = [Text.UTF8Encoding]::new($false); "
-    "$s = [Console]::In.ReadToEnd(); . ([scriptblock]::Create($s))"
+    "$ProgressPreference = 'SilentlyContinue'; [Console]::InputEncoding = [Text.UTF8Encoding]::new($false); "
+    "$s = [Collections.Generic.List[string]]::new(); "
+    f"while ((($l = [Console]::In.ReadLine()) -ne $null) -and $l -cne '{PWSH_STDIN_END}') {{ $s.Add($l) }}; "
+    '. ([scriptblock]::Create($s -join "`n"))'
 )
 PWSH_DETACH_FAILED = "CONNING-NO-DETACH"
 SIGNAL_RC = {"INT": 130, "TERM": 143, "KILL": 137}  # what a POSIX shell reports, so both read alike
@@ -189,7 +203,9 @@ if (Test-Path -LiteralPath "$b.sig") {
 def pwsh_start(job_id: str, command: str, *, cwd: str | None, timeout: int, env: dict[str, str]) -> str:
     """Start `command` detached on a Windows target. Prints the wrapper's pid, or PWSH_DETACH_FAILED
     when WMI can't create the process (the caller then runs the command synchronously)."""
-    job = "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)\n" + pwsh_script(command, cwd=cwd, env={})
+    # WMI starts the wrapper in the jobs folder; the command starts in $HOME, as over ssh.
+    job = "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)\nSet-Location -LiteralPath $HOME\n"
+    job += pwsh_script(command, cwd=cwd, env={})
     wrapper = PWSH_WRAPPER.replace("TIMEOUT_MS", str(int(timeout) * 1000))
     env_lines = "".join(f"{k}\t{_b64(v)}\n" for k, v in env.items())
     utf8 = "[Text.UTF8Encoding]::new($true)"  # a BOM, so Windows PowerShell reads -File scripts as UTF-8
@@ -232,21 +248,27 @@ def pwsh_start(job_id: str, command: str, *, cwd: str | None, timeout: int, env:
 
 
 def pwsh_poll(job_id: str, offset: int, limit: int) -> str:
-    """The PowerShell twin of posix_poll: `CONNING-RC <rc|->`, then raw output bytes from `offset`."""
+    """The PowerShell twin of posix_poll: `CONNING-RC <rc|-> <n>`, then n raw output bytes from `offset`.
+    Only .NET calls, no cmdlets: a cmdlet can make Windows PowerShell load modules and write progress
+    as CLIXML to stderr, which ssh merges into the reply. The byte count keeps the output apart from it."""
     return _pwsh_job_base(job_id) + (
-        '$rc = if (Test-Path -LiteralPath "$b.rc") { [IO.File]::ReadAllText("$b.rc").Trim() } else { \'-\' }\n'
-        "$o = [Console]::OpenStandardOutput()\n"
-        f'$h = [Text.Encoding]::ASCII.GetBytes("{POLL_MARK} $rc`n"); $o.Write($h, 0, $h.Length)\n'
-        'if (Test-Path -LiteralPath "$b.out") {\n'
+        '$rc = if ([IO.File]::Exists("$b.rc")) { [IO.File]::ReadAllText("$b.rc").Trim() } else { \'-\' }\n'
+        f"$buf = [byte[]]::new({int(limit)}); $n = 0\n"
+        'if ([IO.File]::Exists("$b.out")) {\n'
         "    $f = [IO.File]::Open(\"$b.out\", 'Open', 'Read', 'ReadWrite')\n"
-        f"    try {{ $null = $f.Seek({int(offset)}, 'Begin'); $buf = New-Object byte[] {int(limit)}; $n = 0\n"
+        f"    try {{ $null = $f.Seek({int(offset)}, 'Begin')\n"
         "        while ($n -lt $buf.Length) {\n"
         "            $k = $f.Read($buf, $n, $buf.Length - $n); if ($k -le 0) { break }; $n += $k\n"
-        "        }\n"
-        "        $o.Write($buf, 0, $n) } finally { $f.Close() }\n"
+        "        } } finally { $f.Close() }\n"
         "}\n"
-        "$o.Flush()\n"
+        "$o = [Console]::OpenStandardOutput()\n"
+        f'$h = [Text.Encoding]::ASCII.GetBytes("{POLL_MARK} $rc $n`n"); $o.Write($h, 0, $h.Length)\n'
+        "$o.Write($buf, 0, $n); $o.Flush()\n"
     )
+
+
+def pwsh_cleanup(job_id: str) -> str:
+    return _pwsh_job_base(job_id) + f"Get-ChildItem -LiteralPath $d -Filter '{job_id}.*' | Remove-Item -Force\n"
 
 
 def pwsh_signal(job_id: str, signal: str) -> str:
@@ -265,7 +287,8 @@ def pwsh_signal(job_id: str, signal: str) -> str:
 
 
 def pwsh_script(command: str, *, cwd: str | None, env: dict[str, str]) -> str:
-    lines = ["$ErrorActionPreference = 'Continue'"]
+    # No progress records: Windows PowerShell writes them to the log as CLIXML.
+    lines = ["$ErrorActionPreference = 'Continue'", "$ProgressPreference = 'SilentlyContinue'"]
     lines += [f"$env:{k} = '{v.replace(chr(39), chr(39) * 2)}'" for k, v in env.items()]
     if cwd:
         lines.append(f"Set-Location -LiteralPath '{cwd.replace(chr(39), chr(39) * 2)}'")

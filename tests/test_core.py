@@ -90,6 +90,13 @@ def test_the_header_names_the_handle_only_when_output_is_hidden(core):
 
 
 @needs_sh
+def test_a_finished_job_leaves_no_files_on_the_target(core, transport):
+    shell_lab()
+    assert core.run("lab", cmd="seq 1 3") == "exit=0\n1\n2\n3"
+    assert list((transport.remote_home / ".conning" / "jobs").iterdir()) == []
+
+
+@needs_sh
 def test_cmd_string_and_cwd(core, transport):
     write_targets(lab())
     (transport.remote_home / "work").mkdir()
@@ -433,3 +440,45 @@ def test_unresolvable_secret_is_an_error_not_a_crash(core, transport):
     assert core.read(f"j:{job_id}").startswith("status=running")  # nothing shown that could not be redacted
     transport.secret_error = None
     assert "two" in core.read(f"j:{job_id}", wait=10)
+
+
+def test_clixml_split_across_polls_is_held_back_until_complete():
+    from conning.core import POLL_CHUNK, _without_clixml
+
+    noisy = b'#< CLIXML\r\nhi\r\n<Objs Version="1"><Obj S="progress"/></Objs>\r\nbye'
+    assert _without_clixml(noisy, False) == (b"hi\r\nbye", len(noisy))
+    assert _without_clixml(b'hi\n<Objs Version="1"><Obj', False) == (b"hi\n", 3)
+    assert _without_clixml(b'hi\n<Objs Version="1"><Obj', True) == (b'hi\n<Objs Version="1"><Obj', 25)
+    full = b"<Objs Version=" + b"x" * (POLL_CHUNK - 14)  # a block bigger than a poll is let through
+    assert _without_clixml(full, False) == (full, POLL_CHUNK)
+
+
+@needs_sh
+def test_a_job_another_process_finished_is_not_polled_again(core, transport):
+    shell_lab()
+    out = core.run("lab", cmd="sleep 1; echo done", wait=0)
+    stale = Job.load(out.split("job=j:")[1].split()[0])
+    other = Job.load(stale.id)
+    other.rc, other.finished = 0, other.started + 1  # e.g. `conn approve` drained it and cleaned up
+    other.save()
+    calls = len(transport.calls)
+    core._drain(stale, core.clock() + 5)
+    assert stale.rc == 0 and len(transport.calls) == calls
+
+
+@needs_sh
+def test_a_job_finished_elsewhere_during_a_poll_is_not_saved_as_running(core, transport):
+    shell_lab()
+    stale = Job.load(core.run("lab", cmd="sleep 5", wait=0).split("job=j:")[1].split()[0])
+    real = transport.exec
+
+    def exec_(t, command, *, stdin=None, timeout=60):
+        answer = real(t, command, stdin=stdin, timeout=timeout)  # still running on the target
+        other = Job.load(stale.id)
+        other.rc, other.finished = 0, other.started + 1  # meanwhile another process saw it end
+        other.save()
+        return answer
+
+    transport.exec = exec_
+    core._drain(stale, core.clock() + 5)
+    assert stale.rc == 0 and Job.load(stale.id).rc == 0

@@ -12,9 +12,11 @@ Values are resolved inside Conning at the moment they are needed and never retur
 import base64
 import os
 import subprocess
+import threading
 import urllib.parse
 
 KEYCHAIN_SERVICE = "conning"
+KEYCHAIN_TIMEOUT = 30  # seconds; macOS holds a read on an "allow access" dialog the user may never see
 REDACTED = "[REDACTED]"
 NO_KEYCHAIN = (
     "the OS keychain is not reachable in a container (D46); use env: or op://, "
@@ -43,7 +45,7 @@ def resolve(ref: str) -> str:
         if in_container():
             raise SecretError(f"secret {ref}: {NO_KEYCHAIN}")
         service, _, account = ref[len("keychain:") :].rpartition("/")
-        value = _keyring().get_password(service or KEYCHAIN_SERVICE, account)
+        value = _keychain_get(ref, service or KEYCHAIN_SERVICE, account)
         if value is None:
             raise SecretError(f"secret {ref}: not found in the OS keychain")
         return value
@@ -56,6 +58,29 @@ def resolve(ref: str) -> str:
             raise SecretError(f"secret {ref}: op read failed: {done.stderr.strip()[:200]}")
         return done.stdout
     raise SecretError(f"secret {ref!r}: unknown reference type (use keychain:, op:// or env:)")
+
+
+def _keychain_get(ref: str, service: str, account: str) -> str | None:
+    """Read the keychain with a deadline, in a daemon thread so a read stuck on a dialog can't hold up exit."""
+    got: list = []
+
+    def read():
+        try:
+            got.append(_keyring().get_password(service, account))
+        except Exception as e:  # raised in the caller below
+            got.append(e)
+
+    reader = threading.Thread(target=read, daemon=True)
+    reader.start()
+    reader.join(KEYCHAIN_TIMEOUT)
+    if not got:
+        raise SecretError(
+            f"secret {ref}: the OS keychain did not answer in {KEYCHAIN_TIMEOUT}s "
+            "(is an allow-access dialog waiting? choose Always Allow, then retry)"
+        )
+    if isinstance(got[0], Exception):
+        raise SecretError(f"secret {ref}: OS keychain error ({got[0]})") from got[0]
+    return got[0]
 
 
 def store_in_keychain(account: str, value: str, service: str = KEYCHAIN_SERVICE) -> str:

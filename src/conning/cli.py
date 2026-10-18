@@ -326,3 +326,7 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, TargetFileError, SecretError, SSHError) as e:  # one clear line, never a traceback
         print(f"error: {e}")
         return 1
+    except KeyboardInterrupt:  # jobs on targets are detached and keep running; nothing here to clean up
+        print("interrupted", file=sys.stderr, flush=True)
+        sys.stdout.flush()
+        os._exit(130)  # don't wait for worker threads still in a call

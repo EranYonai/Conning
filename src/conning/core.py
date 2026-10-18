@@ -66,6 +66,8 @@ class Core:
     def _script(self, t: Target, script: str, timeout: float = 60) -> tuple[int, bytes]:
         """Run one of Conning's own scripts on the target, sent over stdin."""
         if t.os == "windows":
+            if remote.PWSH_STDIN_END in script.splitlines():
+                raise ValueError(f"script contains the line {remote.PWSH_STDIN_END}")
             stdin = f"{script}\n{remote.PWSH_STDIN_END}\n".encode()
             return self.transport.exec(t, remote.pwsh_stdin(t.shell), stdin=stdin, timeout=timeout)
         return self.transport.exec(t, "sh -s", stdin=script.encode(), timeout=timeout)
@@ -250,6 +252,8 @@ class Core:
                     return None, f"error: {t.name}: {self.transport.explain(t, rc, out)}"
                 job.append(redact(out.decode(errors="replace"), self.transport.secrets(t)))
                 job.rc, job.finished = rc, self.clock()
+                with contextlib.suppress(SSHError):  # the scripts written before WMI failed
+                    self._script(t, remote.pwsh_cleanup(job.id))
             elif rc != 0:
                 return None, f"error: {t.name}: {self.transport.explain(t, rc, out)}"
             else:
@@ -288,6 +292,9 @@ class Core:
         if t is None or job.rc is not None or not job.detached:
             return
         while True:
+            if (saved := Job.load(job.id)) and saved.rc is not None:  # another process finished it, files gone
+                vars(job).update(vars(saved))
+                return
             try:
                 hide = self.transport.secrets(t)  # resolved first: output that can't be redacted is never shown
                 poll = remote.posix_poll if job.posix else remote.pwsh_poll
@@ -295,7 +302,8 @@ class Core:
                 rc, data = remote.parse_poll(out) if rc_ssh == 0 else (None, b"")
             except (SSHError, SecretError, ValueError):
                 rc, data, rc_ssh = None, b"", 255
-            final = rc is not None and len(data) < POLL_CHUNK
+            full = len(data) == POLL_CHUNK
+            final = rc is not None and not full
             used = len(data)
             if data and not job.posix:
                 data, used = _without_clixml(data, final)
@@ -312,7 +320,7 @@ class Core:
                 return
             if self.clock() >= until:
                 return
-            if len(data) < POLL_CHUNK:
+            if not full:
                 self.sleep(self.poll_interval)
 
     def _job_result(self, job: Job, max_bytes: int, grep: str | None) -> str:
@@ -475,6 +483,12 @@ class Core:
 CLIXML = re.compile(rb"#< CLIXML\r?\n|<Objs Version=.*?</Objs>(?:\r?\n)?", re.S)
 
 
+def _progress_only(m: re.Match) -> bytes:
+    """Keep a block holding anything but progress records (an error, user output that looks alike)."""
+    kinds = set(re.findall(rb'<Obj S="(\w+)"', m[0]))
+    return b"" if m[0].startswith(b"#") or kinds == {b"progress"} else m[0]
+
+
 def _without_clixml(data: bytes, final: bool) -> tuple[bytes, int]:
     """Windows PowerShell writes progress records into redirected output as CLIXML: drop them. A block
     not yet complete is left for the next poll. Returns (output, bytes of `data` used)."""
@@ -482,7 +496,7 @@ def _without_clixml(data: bytes, final: bool) -> tuple[bytes, int]:
     start = data.rfind(b"<Objs Version=")
     if not final and start != -1 and b"</Objs>" not in data[start:] and (start or used < POLL_CHUNK):
         used = start
-    return CLIXML.sub(b"", data[:used]), used
+    return CLIXML.sub(_progress_only, data[:used]), used
 
 
 def _each(fn, items) -> list:

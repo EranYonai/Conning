@@ -88,6 +88,13 @@ def test_without_wmi_it_runs_while_connected(core, transport, monkeypatch):
     assert core.read(f"j:{job.id}", signal="INT") == f"error: j:{job.id} is not a running job"
 
 
+def test_without_wmi_the_stdin_end_line_in_a_command_is_refused(core, monkeypatch):
+    write_targets(win())
+    monkeypatch.setattr(remote, "pwsh_start", lambda *a, **k: f"'{remote.PWSH_DETACH_FAILED} no WMI'; exit 98\n")
+    out = core.run("win", cmd=f"'a'\n{remote.PWSH_STDIN_END}\n'b'")
+    assert out == f"error: win: script contains the line {remote.PWSH_STDIN_END}"
+
+
 def test_without_wmi_an_ssh_failure_is_an_error(core, transport, monkeypatch):
     write_targets(win())
     monkeypatch.setattr(remote, "pwsh_start", lambda *a, **k: f"'{remote.PWSH_DETACH_FAILED} no WMI'; exit 98\n")
@@ -127,3 +134,5 @@ def test_windows_powershell_progress_xml_is_dropped(core):
     noise = '<Objs Version="1.1.0.1" xmlns="x"><Obj S="progress" RefId="0"><AV>Preparing</AV></Obj></Objs>'
     cmd = f"[Console]::Out.Write(\"#< CLIXML`n\"); 'hi'; [Console]::Out.Write('{noise}')"
     assert core.run("win", cmd=cmd, wait=60).splitlines()[1:] == ["hi"]
+    error = noise.replace('S="progress"', 'S="Error"')  # kept: an error must never vanish
+    assert error in core.run("win", cmd=f"[Console]::Out.Write('{error}')", wait=60)

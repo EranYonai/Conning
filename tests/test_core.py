@@ -445,8 +445,22 @@ def test_unresolvable_secret_is_an_error_not_a_crash(core, transport):
 def test_clixml_split_across_polls_is_held_back_until_complete():
     from conning.core import POLL_CHUNK, _without_clixml
 
-    assert _without_clixml(b'#< CLIXML\r\nhi\r\n<Objs Version="1"><Obj/></Objs>\r\nbye', False) == (b"hi\r\nbye", 51)
+    noisy = b'#< CLIXML\r\nhi\r\n<Objs Version="1"><Obj S="progress"/></Objs>\r\nbye'
+    assert _without_clixml(noisy, False) == (b"hi\r\nbye", len(noisy))
     assert _without_clixml(b'hi\n<Objs Version="1"><Obj', False) == (b"hi\n", 3)
     assert _without_clixml(b'hi\n<Objs Version="1"><Obj', True) == (b'hi\n<Objs Version="1"><Obj', 25)
     full = b"<Objs Version=" + b"x" * (POLL_CHUNK - 14)  # a block bigger than a poll is let through
     assert _without_clixml(full, False) == (full, POLL_CHUNK)
+
+
+@needs_sh
+def test_a_job_another_process_finished_is_not_polled_again(core, transport):
+    shell_lab()
+    out = core.run("lab", cmd="sleep 1; echo done", wait=0)
+    stale = Job.load(out.split("job=j:")[1].split()[0])
+    other = Job.load(stale.id)
+    other.rc, other.finished = 0, other.started + 1  # e.g. `conn approve` drained it and cleaned up
+    other.save()
+    calls = len(transport.calls)
+    core._drain(stale, core.clock() + 5)
+    assert stale.rc == 0 and len(transport.calls) == calls

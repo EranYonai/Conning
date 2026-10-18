@@ -140,7 +140,7 @@ def pwsh_command(script: str, shell: str = "pwsh") -> str:
 PWSH_STDIN_END = "# CONNING-STDIN-END"
 PWSH_STDIN = (
     "[Console]::InputEncoding = [Text.UTF8Encoding]::new($false); $s = [Collections.Generic.List[string]]::new(); "
-    f"while ((($l = [Console]::In.ReadLine()) -ne $null) -and $l -ne '{PWSH_STDIN_END}') {{ $s.Add($l) }}; "
+    f"while ((($l = [Console]::In.ReadLine()) -ne $null) -and $l -cne '{PWSH_STDIN_END}') {{ $s.Add($l) }}; "
     '. ([scriptblock]::Create($s -join "`n"))'
 )
 PWSH_DETACH_FAILED = "CONNING-NO-DETACH"

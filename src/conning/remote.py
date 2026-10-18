@@ -105,11 +105,16 @@ def posix_cleanup(job_id: str) -> str:
 
 
 def parse_poll(output: bytes) -> tuple[int | None, bytes]:
-    head, _, data = output.partition(b"\n")
-    if not head.startswith(POLL_MARK.encode()):
-        raise ValueError(f"unexpected poll output: {head[:200]!r}")
-    rc = head.split()[-1].decode()
-    return (None if rc == "-" else int(rc)), data
+    """The rc and output after the mark line; noise before it is skipped, and a byte count, when
+    given (Windows), drops noise after."""
+    at = output.find(POLL_MARK.encode() + b" ")
+    if at == -1:
+        raise ValueError(f"unexpected poll output: {output[:200]!r}")
+    head, _, data = output[at:].partition(b"\n")
+    fields = head.decode(errors="replace").split()
+    if len(fields) == 3:
+        data = data[: int(fields[2])]
+    return (None if fields[1] == "-" else int(fields[1])), data
 
 
 def posix_read_file(path: str, range_: str | None) -> str:
@@ -139,7 +144,8 @@ def pwsh_command(script: str, shell: str = "pwsh") -> str:
 # up to an end line, not to end of input: Windows PowerShell over Windows OpenSSH may never see the EOF.
 PWSH_STDIN_END = "# CONNING-STDIN-END"
 PWSH_STDIN = (
-    "[Console]::InputEncoding = [Text.UTF8Encoding]::new($false); $s = [Collections.Generic.List[string]]::new(); "
+    "$ProgressPreference = 'SilentlyContinue'; [Console]::InputEncoding = [Text.UTF8Encoding]::new($false); "
+    "$s = [Collections.Generic.List[string]]::new(); "
     f"while ((($l = [Console]::In.ReadLine()) -ne $null) -and $l -cne '{PWSH_STDIN_END}') {{ $s.Add($l) }}; "
     '. ([scriptblock]::Create($s -join "`n"))'
 )
@@ -242,20 +248,22 @@ def pwsh_start(job_id: str, command: str, *, cwd: str | None, timeout: int, env:
 
 
 def pwsh_poll(job_id: str, offset: int, limit: int) -> str:
-    """The PowerShell twin of posix_poll: `CONNING-RC <rc|->`, then raw output bytes from `offset`."""
+    """The PowerShell twin of posix_poll: `CONNING-RC <rc|-> <n>`, then n raw output bytes from `offset`.
+    Only .NET calls, no cmdlets: a cmdlet can make Windows PowerShell load modules and write progress
+    as CLIXML to stderr, which ssh merges into the reply. The byte count keeps the output apart from it."""
     return _pwsh_job_base(job_id) + (
-        '$rc = if (Test-Path -LiteralPath "$b.rc") { [IO.File]::ReadAllText("$b.rc").Trim() } else { \'-\' }\n'
-        "$o = [Console]::OpenStandardOutput()\n"
-        f'$h = [Text.Encoding]::ASCII.GetBytes("{POLL_MARK} $rc`n"); $o.Write($h, 0, $h.Length)\n'
-        'if (Test-Path -LiteralPath "$b.out") {\n'
+        '$rc = if ([IO.File]::Exists("$b.rc")) { [IO.File]::ReadAllText("$b.rc").Trim() } else { \'-\' }\n'
+        f"$buf = [byte[]]::new({int(limit)}); $n = 0\n"
+        'if ([IO.File]::Exists("$b.out")) {\n'
         "    $f = [IO.File]::Open(\"$b.out\", 'Open', 'Read', 'ReadWrite')\n"
-        f"    try {{ $null = $f.Seek({int(offset)}, 'Begin'); $buf = New-Object byte[] {int(limit)}; $n = 0\n"
+        f"    try {{ $null = $f.Seek({int(offset)}, 'Begin')\n"
         "        while ($n -lt $buf.Length) {\n"
         "            $k = $f.Read($buf, $n, $buf.Length - $n); if ($k -le 0) { break }; $n += $k\n"
-        "        }\n"
-        "        $o.Write($buf, 0, $n) } finally { $f.Close() }\n"
+        "        } } finally { $f.Close() }\n"
         "}\n"
-        "$o.Flush()\n"
+        "$o = [Console]::OpenStandardOutput()\n"
+        f'$h = [Text.Encoding]::ASCII.GetBytes("{POLL_MARK} $rc $n`n"); $o.Write($h, 0, $h.Length)\n'
+        "$o.Write($buf, 0, $n); $o.Flush()\n"
     )
 
 

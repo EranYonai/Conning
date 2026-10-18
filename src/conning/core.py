@@ -257,7 +257,8 @@ class Core:
             elif rc != 0:
                 return None, f"error: {t.name}: {self.transport.explain(t, rc, out)}"
             else:
-                job.pid = out.decode(errors="replace").strip().splitlines()[-1] if out.strip() else None
+                lines = out.decode(errors="replace").split()
+                job.pid = next((w for w in reversed(lines) if w.isdigit()), None)  # past any stderr noise
         except (SSHError, SecretError, ValueError) as e:
             return None, f"error: {t.name}: {e}"
         job.save()

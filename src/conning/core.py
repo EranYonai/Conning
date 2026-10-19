@@ -236,6 +236,20 @@ class Core:
         audit.record("exit", target=t.name, job=job_id, rc=rc)
         return rc
 
+    def shell(self, target: str) -> int | str:
+        """`conn ssh`: an interactive shell on one live target, for the human at this terminal. Audited, not
+        policed or redacted: the human is the one typing. Returns ssh's exit code, or an error line."""
+        t, err = self._one(target)
+        if err:
+            return err
+        audit.record("ssh", target=t.name)
+        try:
+            rc = self.transport.shell(t)
+        except (SSHError, SecretError) as e:
+            rc, err = 255, f"error: {t.name}: {e}"
+        audit.record("ssh", target=t.name, rc=rc)
+        return err or rc
+
     def _start(self, t: Target, cmd: str | None, argv: list[str] | None, cwd: str | None, timeout: int):
         """Start one job. Returns (Job, None) or (None, error line)."""
         command = self._command_for(t, cmd, argv)

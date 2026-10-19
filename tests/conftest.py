@@ -81,6 +81,10 @@ class LocalTransport:
                 write(chunk)
         return p.returncode
 
+    def shell(self, t):
+        self.calls.append((t.name, "shell", None))
+        return 0
+
     def copy(self, t, local, remote_path, *, upload):
         if self.copy_result is not None:
             return self.copy_result

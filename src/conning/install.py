@@ -20,7 +20,7 @@ from pathlib import Path
 from conning import paths
 
 DENIED_PROGRAMS = ("ssh", "scp", "sftp")
-HUMAN_ONLY = ("approve", "allow", "targets rename", "targets mode")  # conn commands that grant or move trust
+HUMAN_ONLY = ("approve", "allow", "targets rename", "targets mode", "ssh")  # grant or move trust, or skip policy
 
 
 @dataclass

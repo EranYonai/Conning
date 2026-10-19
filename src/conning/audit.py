@@ -120,6 +120,7 @@ def describe(e: dict) -> str:
         "transfer": lambda: f"transfer {e.get('source')} -> {e.get('dest')}  ({e.get('result', '')})",
         "read-file": lambda: f"read     {target}:{e.get('path')}",
         "target": lambda: f"target   {target}  {e.get('change')}",
+        "ssh": lambda: f"ssh      {target}  " + (f"closed exit={e['rc']}" if "rc" in e else "opened"),
         "rule": lambda: f"rule     {target}  {e.get('change')} '{e.get('rule')}'",
     }.get(e.get("event", ""), lambda: f"{e.get('event')} {target}")
     return f"{when}  {what()}"

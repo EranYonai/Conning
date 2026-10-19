@@ -41,7 +41,7 @@ compdef _conn conn
 """,
     "fish": "complete -c conn -f -a '(conn __complete (commandline -opc)[2..-1] (commandline -ct) 2>/dev/null)'\n",
 }
-TARGET_FIRST = {"run", "test", "mode", "rm", "rename", "allow", "deny", "approve", "targets"}
+TARGET_FIRST = {"run", "ssh", "test", "mode", "rm", "rename", "allow", "deny", "approve", "targets"}
 SECRETISH = re.compile(r"pass(wd|word)|pw=|token|secret|api.?key|authori[sz]ation|bearer|://[^/\s:@]+:[^/\s@]+@", re.I)
 HISTORY_LINES = 500
 TIMEOUT = 5

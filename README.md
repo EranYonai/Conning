@@ -14,6 +14,7 @@ password, and you approve anything risky.
 conn targets add lab --host 10.0.0.5 --user tester   # asks for the rest, pins the host key
 conn run lab uname -a                                 # exit code first, then the output
 conn run -t lab apt upgrade                           # you, at a terminal: live, like ssh -t
+conn ssh lab                                          # you: a shell there, same login and jump hosts
 conn targets mode lab auto                            # optional: let the agent run anything there
 ```
 
@@ -111,6 +112,11 @@ conn read [--wait WAIT] [--range RANGE] [--grep GREP] [--signal {INT,TERM,KILL}]
 conn transfer source dest
     Copy files: local:<path> to <target>:<path>, or back. sha256 checked.
 
+# At a terminal
+
+conn ssh target
+    Human only: an interactive shell on a target, with its login, key, port and jump hosts.
+
 # Targets (conn targets <verb>)
 
 conn targets add [--host HOST] [--user USER] [--like TARGET] [--port PORT]
@@ -207,7 +213,7 @@ takes it back. Every command, answer and rule change lands in a hash-chained aud
 - Secrets travel over stdin or the SSH channel's env, never argv. Output is redacted before it is saved.
 - Remote output is marked untrusted. Shell wrappers (`sh -c`, `python -c`, `sudo`...) and shell syntax
   (`;`, `|`, `$(...)`) always ask.
-- `conn mcp install` also denies the agent raw `ssh`/`scp`, so it can't go around Conning (pi has no
+- `conn mcp install` also denies the agent raw `ssh`/`scp` and `conn ssh`, so it can't go around Conning (pi has no
   permission rules, so there it only adds the server).
 - The audit log is hash-chained. It runs as your user, so it is tamper-evident, not tamper-proof.
 

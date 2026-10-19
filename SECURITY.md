@@ -39,9 +39,16 @@ approves anything or changes policy. These need a human at an interactive termin
 - `conn targets mode <target> auto`. (Going back to `ask` needs no terminal.)
 - `conn targets rename`, `conn ssh` and `conn run -t`.
 
-`conn mcp install` also writes deny rules into the agent client for raw `ssh`, `scp` and `sftp`, these
-human-only `conn` commands and reads of Conning's config dir. Those rules match what the agent types,
-so they are a guardrail; the four tools are the wall.
+`conn mcp install` also writes deny rules into the agent client for raw `ssh`, `scp` and `sftp`, the
+human-only `conn` commands and reads of Conning's config dir, as far as each client's rule format
+allows (Cursor gets no `conn` rules, Codex no config-dir rule, pi none at all). Those rules match what
+the agent types, so they are a guardrail; the four tools are the wall.
+
+That wall holds only for an agent whose sole way in is the four tools. An agent that also has its own
+shell or file tools, running as the same OS user as Conning, can do whatever that user can: write an
+approval file into the state dir, or run `conn approve` under a fake terminal (`script`, a Python pty).
+For a real boundary, run the agent as another user or in a sandbox that can't write Conning's config
+and state dirs.
 
 ## Command policy
 
@@ -64,15 +71,16 @@ it warns about and drops `ForwardAgent`, `ForwardX11`, `LocalForward`, `RemoteFo
 
 ## Prompt injection through remote output
 
-Remote output is data. Results mark it untrusted, the server instructions tell the agent never to
-follow instructions in it, and it can't change anything by itself: the agent cannot approve,
-add a live target, change a mode or rule, or see a secret, whatever it is told. An injected agent can
-still do whatever the tools allow without approval:
+Remote output is data. The tool descriptions and the server instructions mark it untrusted and tell
+the agent never to follow instructions in it, and it can't change anything by itself: through the four
+tools the agent cannot approve, add a live target, change a mode or rule, or see a secret, whatever it
+is told. An injected agent can still do whatever the tools allow without approval:
 
 - run commands on the read-only list or matching an allow rule, and anything on an `auto` target;
 - read any file the target's user can read with `read <target>:<path>` (redacted as above);
 - copy files either way with `transfer`, which is not gated by command policy: it can overwrite files
-  on a target, and download to any path the user running Conning can write on that machine;
+  on a target, and read or write any local path the user running Conning can, except Conning's config
+  and state dirs, `~/.ssh` and target key files, which it refuses (D62);
 - stop a job Conning started (`read` with `signal`).
 
 Choose what a target's user can reach, and which targets are `auto`, with that in mind. Every command,

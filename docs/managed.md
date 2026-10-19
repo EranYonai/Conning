@@ -6,12 +6,12 @@ name (an MCP gateway, a proxy, a managed client). Decisions D60 and D61 in [desi
 ## Launch
 
 ```sh
-uvx -q --from conning==0.6.4 conning mcp --no-approve-in-client serve
-uvx -q --from conning==0.6.4 conning mcp serve --no-approve-in-client   # the same; either position works
+uvx -q --from conning==<version> conning mcp --no-approve-in-client serve
+uvx -q --from conning==<version> conning mcp serve --no-approve-in-client   # the same; either position works
 ```
 
 The server speaks MCP over stdio and has no daemon, port or network listener. Pin the version, and
-install the `conn` CLI the human uses at the same version (`uv tool install conning==0.6.4`).
+install the `conn` CLI the human uses at the same version (`uv tool install conning==<version>`).
 
 **Behind a proxy, use `--no-approve-in-client`.** By default a command that needs approval asks the
 human through MCP elicitation. A proxy may not forward elicitation, or may advertise it and drop it,
@@ -53,10 +53,13 @@ Per-user: differs per human or machine. Server: read by `conning mcp serve`; CLI
 | `CONNING_STATE` | state dir: jobs, approvals, audit log, generated ssh configs | yes | no | server, CLI |
 | `XDG_CONFIG_HOME`, `XDG_STATE_HOME` | default config and state dirs (Linux, macOS) | yes | no | server, CLI |
 | `APPDATA`, `LOCALAPPDATA` | default config and state dirs (Windows) | yes | no | server, CLI |
-| `HOME` / `USERPROFILE`, `TMPDIR` | home folder; private dir for ssh sockets and the askpass helper | yes | no | server, CLI |
+| `HOME` / `USERPROFILE` | home folder | yes | no | server, CLI |
+| `TMPDIR` (`TEMP`/`TMP` on Windows) | private dir for ssh sockets and the askpass helper, only where `/tmp` is missing | yes | no | server, CLI |
 | `PATH` | finds `ssh`, `scp`, `ssh-keyscan`, `op`, `notify-send`/`osascript` | yes | no | server, CLI |
 | `SSH_AUTH_SOCK`, `DISPLAY` | passed to ssh: the ssh-agent socket; askpass needs a `DISPLAY` (`:0` if unset) | yes | grants key use | server, CLI |
 | `<NAME>` of an `env:<NAME>` secret reference | a target's password or injected value | yes | **yes** | server, CLI |
+| `OP_SERVICE_ACCOUNT_TOKEN`, `OP_ACCOUNT`, `OP_SESSION_*` | read by `op` for `op://` secrets; a headless server needs a service account token | yes | **yes** (token, session) | server, CLI |
+| `DBUS_SESSION_BUS_ADDRESS` | Secret Service (`keychain:` on Linux) and `notify-send`; a scrubbed launch environment often drops it | yes | no | server, CLI |
 | `CONNING_NOTIFY` | `0` turns off the desktop notification for a pending command | fixed | no | server, CLI |
 | `CONNING_IN_CONTAINER` | `1`/`0` overrides container detection (refuses `keychain:`) | fixed | no | server, CLI |
 | `PYTHON_KEYRING_BACKEND` | the keyring library's own backend choice | fixed | no | server, CLI |
@@ -83,5 +86,6 @@ The toolset is fixed at four; none returns a secret, adds a live target or chang
 | `transfer` | Copy files | false | true | | true |
 
 Only `run` can return `status=pending_approval`; `read a:<id>` reports it and, once approved, starts the
-command. `read <target>:<path>` and `transfer` are not gated by command policy. See
+command. `read <target>:<path>` and `transfer` are not gated by command policy; `transfer` refuses Conning's
+config and state dirs, `~/.ssh` and target key files. See
 [SECURITY.md](../SECURITY.md) for what that means.

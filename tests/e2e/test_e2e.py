@@ -284,7 +284,7 @@ def close_shared_connection(c: Conn, name: str) -> None:
     subprocess.run(["ssh", "-F", str(conf), "-O", "exit", "conning-target"], capture_output=True)
 
 
-def test_a_target_behind_a_jump_host(tmp_path):
+def test_a_target_behind_a_jump_host(tmp_path, tmp_path_factory):
     c = Conn(tmp_path)
     add_live(c, "gw", "--auth", "key", "--key", KEY)
     inner = ("--host", "localhost", "--port", PORT, "--user", USER, "--auth", "key", "--key", KEY)
@@ -296,7 +296,7 @@ def test_a_target_behind_a_jump_host(tmp_path):
     term = c.terminal("ssh", "inner")
     term.send("echo inside-$((2 + 2)); exit\n")
     assert "inside-4" in term.finish() and term.proc.returncode == 0
-    blob = tmp_path / "blob.txt"
+    blob = tmp_path_factory.mktemp("work") / "blob.txt"  # outside CONNING_HOME, which transfer refuses
     blob.write_text("through the bastion")
     assert "sha256 verified" in c("transfer", f"local:{blob}", f"inner:{REMOTE}-jumped.txt")
     assert "inner jump through gw" in c("targets", "rm", "gw")

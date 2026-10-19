@@ -13,7 +13,10 @@ Ready for MCP gateways and managed clients. The four tools are unchanged: no too
   - `transfer`: "Copy files"; readOnlyHint false, destructiveHint true, openWorldHint true.
 - Every parameter has a description, and each tool says what it touches, whether it can return
   `status=pending_approval`, and that remote content is untrusted. Generated titles and `null`
-  branches are gone from the schemas, which grow from 2,454 to 3,286 characters.
+  branches are gone from the schemas, which grow from 2,454 to 3,276 characters.
+- `transfer` refuses Conning's own config and state dirs, `~/.ssh` and target key files, so an agent
+  can't copy a key out or overwrite the target file. A job stopped with `read`'s `signal` is now in
+  the audit log.
 - A client that declares url-only elicitation now gets `status=pending_approval`, as one without
   elicitation does, instead of an error.
 - `--approve-in-client` / `--no-approve-in-client` may also follow `serve`

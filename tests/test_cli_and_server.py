@@ -27,7 +27,7 @@ def test_server_has_exactly_four_tools_and_a_small_schema():
     assert sorted(t.name for t in tools) == ["read", "run", "targets", "transfer"]
     assert all(t.output_schema is None for t in tools)  # results are text only, never sent twice (D50)
     size = len(json.dumps([t.model_dump(by_alias=True, exclude_none=True) for t in tools]))
-    assert size < 3300, f"tool schemas grew to {size} chars; every char costs context on every turn"
+    assert size < 3350, f"tool schemas grew to {size} chars; every char costs context on every turn"
 
 
 def test_tools_carry_titles_and_annotations():

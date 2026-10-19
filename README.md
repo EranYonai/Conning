@@ -39,7 +39,7 @@ conn targets mode lab auto                            # optional: let the agent 
 
 ```sh
 uv tool install conning        # or: pipx install conning
-conn mcp install claude        # or codex, cursor, opencode, pi: adds the server and denies raw ssh/scp
+conn mcp install claude        # or codex, cursor, opencode, pi: adds the server, its skill, and denies raw ssh/scp
 ```
 
 For Tab completion that reads the target (its files, commands and shell history), run

@@ -591,6 +591,7 @@ def test_approving_in_the_agent_client(conn):
 def test_mcp_install_for_every_client(conn, tmp_path):
     c = Conn(tmp_path)
     c.env["PATH"] = os.pathsep.join([str(Path(sys.executable).parent), "/usr/bin", "/bin"])  # no real clients
+    c.env.pop("XDG_CONFIG_HOME", None)  # CI sets it; opencode's files go under ~/.config without it
     home = tmp_path / "home"
     assert "would write" in c("mcp", "install", "claude", "--dry-run") and not (home / ".claude").exists()
     out = c("mcp", "install", "claude")
@@ -598,10 +599,13 @@ def test_mcp_install_for_every_client(conn, tmp_path):
     deny = json.loads((home / ".claude" / "settings.json").read_text())["permissions"]["deny"]
     assert "Bash(ssh *)" in deny and "Bash(conn approve *)" in deny and "Bash(conn targets rename *)" in deny
     assert "Bash(conn targets mode *)" in deny
+    assert "name: conning" in (home / ".claude" / "skills" / "conning" / "SKILL.md").read_text()
     assert "nothing to change" in c("mcp", "install", "claude")
     for client in ("codex", "cursor", "opencode", "pi"):
         assert "wrote" in c("mcp", "install", client), client
     assert '["conn", "targets", "rename"]' in (home / ".codex" / "rules" / "conning.rules").read_text()
+    for skills in (".codex/skills", ".cursor/skills", ".config/opencode/skills", ".pi/agent/skills"):
+        assert (home / skills / "conning" / "SKILL.md").exists(), skills
     entry = json.loads((home / ".cursor" / "mcp.json").read_text())["mcpServers"]["conning"]
 
     async def work(s):  # the server exactly as a client would start it

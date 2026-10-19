@@ -195,3 +195,27 @@ def test_pi_adds_the_server_and_says_it_has_no_rules(fake_home):
     data = json.loads((fake_home / ".pi" / "agent" / "mcp.json").read_text())
     assert data["mcpServers"]["conning"] == {"command": "/opt/bin/conn", "args": ["mcp"]}
     assert io.said[-1].startswith("note: pi has no permission rules")
+
+
+@pytest.mark.parametrize(
+    "client, skills",
+    [
+        ("claude", ".claude/skills"),
+        ("codex", ".codex/skills"),
+        ("cursor", ".cursor/skills"),
+        ("opencode", ".config/opencode/skills"),
+        ("pi", ".pi/agent/skills"),
+    ],
+)
+def test_every_client_gets_the_shipped_skill(fake_home, no_claude, monkeypatch, client, skills):
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    shipped = (Path(install.__file__).parent / "skill" / "SKILL.md").read_text()
+    assert shipped.startswith("---\nname: conning\ndescription: ")
+    skill = fake_home / skills / "conning" / "SKILL.md"
+    io = FakeIO(tty=False)
+    assert install.install(io, client) == 0
+    assert skill.read_text() == shipped and f"wrote {skill}" in io.said
+    skill.write_text("an older copy")  # an upgrade brings this version's skill
+    io = FakeIO(tty=False)
+    install.install(io, client)
+    assert io.said[0] == f"wrote {skill}" and skill.read_text() == shipped

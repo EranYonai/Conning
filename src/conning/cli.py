@@ -232,7 +232,7 @@ def build_parser() -> Parser:
     )
     mcp_sub = sp.add_subparsers(dest="mcp_command", metavar="<serve|install>")
     mcp_sub.add_parser("serve", help="run the MCP server on stdio (the default)")
-    sp = mcp_sub.add_parser("install", help="add Conning to an agent client, and deny it raw ssh/scp")
+    sp = mcp_sub.add_parser("install", help="add Conning and its skill to an agent client, and deny it raw ssh/scp")
     sp.add_argument("client", choices=list(install.PLANNERS))
     sp.add_argument("--dry-run", action="store_true", help="show what would change")
 

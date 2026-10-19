@@ -2,6 +2,7 @@
 
 Each client gets the MCP server entry plus permission rules that refuse raw `ssh`, `scp` and `sftp`,
 the human-only `conn` commands, and reads of Conning's config dir (D44, D45); pi has no rules to write.
+Each also gets the Conning skill (D57), from the copy shipped in this package, in its skills folder.
 Files are merged, never replaced: what is already there stays, a backup of each changed file is kept
 next to it, and a second run changes nothing. Rules in an agent's settings are a guardrail, not a
 sandbox: they match the command the agent writes (`/usr/bin/ssh` or `sh -c 'ssh ...'` slip past), so
@@ -13,6 +14,7 @@ import os
 import shutil
 import subprocess
 from dataclasses import dataclass, field
+from importlib import resources
 from pathlib import Path
 
 from conning import paths
@@ -34,6 +36,14 @@ def server_command() -> list[str]:
     """The installed `conn` by absolute path, so a client with a bare PATH still finds it."""
     conn = shutil.which("conn")
     return [conn, "mcp"] if conn else ["uvx", "conning", "mcp"]
+
+
+def _add_skill(plan: Plan, skills: Path) -> None:
+    """Write the shipped skill to `<skills>/conning/SKILL.md`, and again whenever this version's copy differs."""
+    path = skills / "conning" / "SKILL.md"
+    text = resources.files("conning").joinpath("skill", "SKILL.md").read_text(encoding="utf-8")
+    if not path.exists() or path.read_text(encoding="utf-8") != text:
+        plan.writes[path] = text
 
 
 def _home_relative(path: Path, prefix: str) -> str:
@@ -79,6 +89,7 @@ def plan_claude(command: list[str]) -> Plan:
     data = _load_json(settings)
     if _merge_deny(data, rules):
         plan.writes[settings] = _dump_json(data)
+    _add_skill(plan, _claude_dir() / "skills")
     claude = shutil.which("claude")
     if claude is None:
         add = "claude mcp add --scope user conning -- " + " ".join(command)
@@ -117,6 +128,7 @@ def plan_codex(command: list[str]) -> Plan:
     body = "".join(lines)
     if not rules.exists() or rules.read_text(encoding="utf-8") != body:
         plan.writes[rules] = body
+    _add_skill(plan, _codex_dir() / "skills")
     plan.notes.append(f"codex rules cover commands only; it can still read {paths.config_dir()}")
     return plan
 
@@ -142,6 +154,7 @@ def plan_cursor(command: list[str]) -> Plan:
     rules = [f"Shell({p})" for p in DENIED_PROGRAMS] + [f"Read({config}/**)", f"Write({config}/**)"]
     if _merge_deny(data, rules):
         plan.writes[cli] = _dump_json(data)
+    _add_skill(plan, Path.home() / ".cursor" / "skills")
     plan.notes.append("the deny rules apply to the Cursor CLI agent; the editor asks before running commands")
     return plan
 
@@ -150,6 +163,7 @@ def plan_opencode(command: list[str]) -> Plan:
     """opencode: the server under `mcp`, and deny rules under `permission`, where the last match wins."""
     plan = Plan()
     path = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "opencode" / "opencode.json"
+    _add_skill(plan, path.parent / "skills")
     data = _load_json(path)
     before = _dump_json(data)
     data.setdefault("mcp", {}).setdefault("conning", {"type": "local", "command": command, "enabled": True})
@@ -175,6 +189,7 @@ def plan_opencode(command: list[str]) -> Plan:
 def plan_pi(command: list[str]) -> Plan:
     plan = Plan()
     _add_server(plan, Path.home() / ".pi" / "agent" / "mcp.json", {"command": command[0], "args": command[1:]})
+    _add_skill(plan, Path.home() / ".pi" / "agent" / "skills")
     plan.notes.append("pi has no permission rules; it can still run ssh itself (a pi extension can block it)")
     return plan
 

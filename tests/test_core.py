@@ -488,6 +488,7 @@ def test_a_job_finished_elsewhere_during_a_poll_is_not_saved_as_running(core, tr
 
 def test_transfer_wont_copy_conning_files_or_ssh_keys(core, home, tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))  # Path.home() on Windows
     key = tmp_path / "keys" / "lab_ed25519"
     key.parent.mkdir()
     key.write_text("k")

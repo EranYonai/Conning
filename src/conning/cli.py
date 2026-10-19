@@ -157,9 +157,9 @@ def build_parser() -> Parser:
     )
     verbs = sp.add_subparsers(dest="verb", metavar="<verb>")
     # `conn targets [filter]` is `conn targets ls`; main() inserts the hidden `ls` (no help, so unlisted).
-    sp = verbs.add_parser("ls", prog="conn targets", description="List targets. Never hosts or secrets.")
+    sp = verbs.add_parser("ls", prog="conn targets", description="List targets. Never secrets.")
     sp.set_defaults(func=HANDLERS["targets"])
-    p.sections[section] = [("targets", sp, "List targets: name, OS, shell, user, tags, mode. Never hosts or secrets.")]
+    p.sections[section] = [("targets", sp, "List targets: name, OS, shell, host, user, tags, mode. Never secrets.")]
     sp.add_argument("filter", nargs="?", help="'tag:<tag>' or comma-separated names")
     sp.add_argument("--check", action="store_true", help="probe reachability in parallel")
 

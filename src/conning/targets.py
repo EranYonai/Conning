@@ -165,7 +165,7 @@ def select(targets: dict[str, Target], selector: str | None) -> list[Target]:
 
 
 def listing(targets: list[Target], reach: dict[str, str] | None = None, notes: dict[str, str] | None = None) -> str:
-    """One line per target, with the user it logs in as. Never prints a host or a secret reference."""
+    """One line per target, with its host and the user it logs in as. Never prints a secret reference."""
     width = max(len(t.name) for t in targets)
     lines = []
     for t in targets:
@@ -173,7 +173,8 @@ def listing(targets: list[Target], reach: dict[str, str] | None = None, notes: d
         if t.status == "pending":
             mode = f"pending ({notes[t.name]})" if notes and t.name in notes else "pending"
         tags = f"tags={','.join(t.tags)}" if t.tags else "tags=-"
-        line = f"{t.name:<{width}}  {t.os:<7}  {t.shell:<4}  user={t.user}  {tags}  mode={mode}"
+        host = t.host if t.port == 22 else f"{t.host}:{t.port}"
+        line = f"{t.name:<{width}}  {t.os:<7}  {t.shell:<4}  host={host}  user={t.user}  {tags}  mode={mode}"
         lines.append(f"{line}  reach={reach[t.name]}" if reach and t.name in reach else line)
     return "\n".join(lines)
 

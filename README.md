@@ -80,7 +80,7 @@ Targets on a lab LAN or VPN need `--network host` (Linux) or a route the contain
 
 | Tool | What it does |
 |---|---|
-| `targets(filter?, check?)` | One line per target: name, OS, shell, user, tags, mode. Never a host or secret. |
+| `targets(filter?, check?)` | One line per target: name, OS, shell, host, user, tags, mode. Never a secret. |
 | `run(target, cmd \| argv, wait=30, max_bytes=8192, ...)` | Runs on one target, a list or `tag:<tag>`. Exit code first. Still running after `wait` seconds: returns a job id (`wait=0` is async). |
 | `read(id, wait?, range?, grep?, signal?)` | Long-polls a job for new lines, pages a saved output, or reads a remote file. |
 | `transfer(source, dest)` | Copies files between `local:<path>` and `<target>:<path>`, checked by sha256. |
@@ -97,7 +97,7 @@ in sync with the code.
 # Agent commands (same output as the MCP tools)
 
 conn targets [--check] [filter]
-    List targets: name, OS, shell, user, tags, mode. Never hosts or secrets.
+    List targets: name, OS, shell, host, user, tags, mode. Never secrets.
 
 conn run [--wait WAIT] [--timeout TIMEOUT] [--cwd CWD] [--shell] [-t]
                 [--max-bytes MAX_BYTES] [--grep GREP]

@@ -229,12 +229,21 @@ def live(conn: Connection, remote_command: str, write: Callable[[bytes], None]) 
     return p.returncode
 
 
+# Terminal types every target knows. Others (xterm-ghostty, xterm-kitty...) often have no terminfo on the
+# target, and its shell then acts like a dumb terminal: Backspace prints spaces.
+PORTABLE_TERMS = {"xterm", "xterm-256color", "xterm-color", "screen", "screen-256color", "tmux", "tmux-256color"}
+PORTABLE_TERMS |= {"linux", "vt100", "vt220", "dumb"}
+
+
 def shell(conn: Connection) -> int:
     """An interactive login shell on the target (`ssh -t`), wired straight to this terminal. A human may
     type a key's passphrase; Ctrl-C reaches ssh, which decides, so Conning always gets its exit code."""
     argv = ["-t" if a == "-T" else a for a in conn.argv]
     argv[-1:-1] = ["-o", "BatchMode=no"]
-    with subprocess.Popen(argv, env=conn.env) as p:
+    env = dict(conn.env)
+    if env.get("TERM", "dumb") not in PORTABLE_TERMS:
+        env["TERM"] = "xterm-256color"
+    with subprocess.Popen(argv, env=env) as p:
         while True:
             try:
                 return p.wait()

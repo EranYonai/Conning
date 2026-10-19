@@ -591,6 +591,7 @@ def test_approving_in_the_agent_client(conn):
 def test_mcp_install_for_every_client(conn, tmp_path):
     c = Conn(tmp_path)
     c.env["PATH"] = os.pathsep.join([str(Path(sys.executable).parent), "/usr/bin", "/bin"])  # no real clients
+    c.env.pop("XDG_CONFIG_HOME", None)  # CI sets it; opencode's files go under ~/.config without it
     home = tmp_path / "home"
     assert "would write" in c("mcp", "install", "claude", "--dry-run") and not (home / ".claude").exists()
     out = c("mcp", "install", "claude")

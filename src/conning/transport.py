@@ -18,6 +18,8 @@ class Transport(Protocol):
 
     def live(self, t: Target, command: str, write: Callable[[bytes], None]) -> int: ...
 
+    def shell(self, t: Target) -> int: ...
+
     def copy(self, t: Target, local: Path, remote_path: str, *, upload: bool) -> tuple[int, bytes]: ...
 
     def inject_env(self, t: Target) -> dict[str, str]: ...
@@ -44,6 +46,9 @@ class SSHTransport:
 
     def live(self, t: Target, command: str, write: Callable[[bytes], None]) -> int:
         return ssh.live(self._conn(t), command, write)
+
+    def shell(self, t: Target) -> int:
+        return ssh.shell(self._conn(t))
 
     def copy(self, t: Target, local: Path, remote_path: str, *, upload: bool) -> tuple[int, bytes]:
         scp = shutil.which("scp")

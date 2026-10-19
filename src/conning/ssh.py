@@ -229,6 +229,19 @@ def live(conn: Connection, remote_command: str, write: Callable[[bytes], None]) 
     return p.returncode
 
 
+def shell(conn: Connection) -> int:
+    """An interactive login shell on the target (`ssh -t`), wired straight to this terminal. A human may
+    type a key's passphrase; Ctrl-C reaches ssh, which decides, so Conning always gets its exit code."""
+    argv = ["-t" if a == "-T" else a for a in conn.argv]
+    argv[-1:-1] = ["-o", "BatchMode=no"]
+    with subprocess.Popen(argv, env=conn.env) as p:
+        while True:
+            try:
+                return p.wait()
+            except KeyboardInterrupt:
+                pass
+
+
 def explain_ssh_failure(output: bytes) -> str:
     text = output.decode(errors="replace")
     if "REMOTE HOST IDENTIFICATION HAS CHANGED" in text or "Host key verification failed" in text:

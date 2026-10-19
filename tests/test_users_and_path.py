@@ -12,8 +12,9 @@ keychain = test_admin.keychain
 
 
 def test_targets_show_the_user(core):
-    write_targets(target("lab", user="root"))
-    assert core.targets().split() == ["lab", "linux", "bash", "user=root", "tags=-", "mode=ask"]
+    write_targets(target("lab", user="root"), target("other", port=2222))
+    assert core.targets("lab").split() == ["lab", "linux", "bash", "host=192.0.2.10", "user=root", "tags=-", "mode=ask"]
+    assert "host=192.0.2.10:2222" in core.targets("other")
 
 
 def test_like_copies_the_machine_and_asks_for_the_new_users_password(core, transport, keyscan, keychain):

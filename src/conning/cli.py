@@ -60,6 +60,14 @@ def _run_live(args: argparse.Namespace) -> int:
     return _emit(result) if isinstance(result, str) else result
 
 
+def _ssh(args: argparse.Namespace) -> int:
+    if not _io().tty:
+        print("error: conn ssh needs a terminal")
+        return 1
+    result = _core().shell(args.target)
+    return _emit(result) if isinstance(result, str) else result
+
+
 def _add(a: argparse.Namespace) -> int:
     return admin.add(
         _core(), _io(), a.name, host=a.host, user=a.user, port=a.port, auth=a.auth, secret=a.secret, key=a.key,
@@ -90,6 +98,7 @@ HANDLERS = {
         _core().read(a.id, wait=a.wait, range=a.range, grep=a.grep, signal=a.signal, max_bytes=a.max_bytes)
     ),
     "transfer": lambda a: _emit(_core().transfer(a.source, a.dest)),
+    "ssh": _ssh,
     "targets add": _add,
     "targets import": lambda a: admin.import_ssh_config(_io(), a.match),
     "targets test": lambda a: admin.test(_core(), _io(), a.name),
@@ -148,9 +157,9 @@ def build_parser() -> Parser:
     )
     verbs = sp.add_subparsers(dest="verb", metavar="<verb>")
     # `conn targets [filter]` is `conn targets ls`; main() inserts the hidden `ls` (no help, so unlisted).
-    sp = verbs.add_parser("ls", prog="conn targets", description="List targets. Never hosts or secrets.")
+    sp = verbs.add_parser("ls", prog="conn targets", description="List targets. Never secrets.")
     sp.set_defaults(func=HANDLERS["targets"])
-    p.sections[section] = [("targets", sp, "List targets: name, OS, shell, user, tags, mode. Never hosts or secrets.")]
+    p.sections[section] = [("targets", sp, "List targets: name, OS, shell, host, user, tags, mode. Never secrets.")]
     sp.add_argument("filter", nargs="?", help="'tag:<tag>' or comma-separated names")
     sp.add_argument("--check", action="store_true", help="probe reachability in parallel")
 
@@ -181,6 +190,10 @@ def build_parser() -> Parser:
     sp = cmd("transfer", "Copy files: local:<path> to <target>:<path>, or back. sha256 checked.")
     sp.add_argument("source")
     sp.add_argument("dest")
+
+    section = "At a terminal"
+    sp = cmd("ssh", "Human only: an interactive shell on a target, with its login, key, port and jump hosts.")
+    sp.add_argument("target")
 
     section = "Targets (conn targets <verb>)"
     sp = cmd("add", "Add a target. Without a terminal it is saved as pending until a human approves it.", verbs)

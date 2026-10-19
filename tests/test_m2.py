@@ -68,6 +68,8 @@ def test_audit_without_a_file_or_a_writable_dir(monkeypatch, tmp_path):
         ({"event": "read-file", "target": "lab", "path": "/etc/hosts"}, "read     lab:/etc/hosts"),
         ({"event": "target", "target": "lab", "change": "live"}, "target   lab  live"),
         ({"event": "rule", "target": "lab", "change": "allow", "rule": "df"}, "rule     lab  allow 'df'"),
+        ({"event": "ssh", "target": "lab"}, "ssh      lab  opened"),
+        ({"event": "ssh", "target": "lab", "rc": 0}, "ssh      lab  closed exit=0"),
         ({"event": "other", "target": "lab"}, "other lab"),
     ],
 )

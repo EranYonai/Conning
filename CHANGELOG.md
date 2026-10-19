@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.3 (2026-10-19)
+
+- `conn ssh <target>` opens an interactive shell on a target with its Conning settings: user, key or
+  keychain password, port, pinned host key and jump hosts, nothing from `~/.ssh/config`. It is for a
+  human at a terminal, is audited when it opens and closes, and `conn mcp install` denies it to the agent.
+- `conn targets` (and the `targets` tool) shows each target's host, with the port when it isn't 22.
+- `conn mcp install` also installs the Conning skill into the agent client's skills folder, and refreshes
+  it after an upgrade.
+- Windows: `conn run` no longer hangs at start (the stdin script ends with a marker line instead of EOF),
+  progress records no longer leak into job output, and jobs start in the home folder.
+- A finished job's files are deleted from the target once its output is copied home.
+- Keychain reads time out instead of hanging, and Ctrl-C exits at once without a traceback.
+
 ## 0.6.2 (2026-10-17)
 
 - `conn run -t` (`--tty`) runs a command live in a remote terminal, like `ssh -t`: spinners, progress

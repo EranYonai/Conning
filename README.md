@@ -14,6 +14,7 @@ password, and you approve anything risky.
 conn targets add lab --host 10.0.0.5 --user tester   # asks for the rest, pins the host key
 conn run lab uname -a                                 # exit code first, then the output
 conn run -t lab apt upgrade                           # you, at a terminal: live, like ssh -t
+conn ssh lab                                          # you: a shell there, same login and jump hosts
 conn targets mode lab auto                            # optional: let the agent run anything there
 ```
 
@@ -79,7 +80,7 @@ Targets on a lab LAN or VPN need `--network host` (Linux) or a route the contain
 
 | Tool | What it does |
 |---|---|
-| `targets(filter?, check?)` | One line per target: name, OS, shell, user, tags, mode. Never a host or secret. |
+| `targets(filter?, check?)` | One line per target: name, OS, shell, host, user, tags, mode. Never a secret. |
 | `run(target, cmd \| argv, wait=30, max_bytes=8192, ...)` | Runs on one target, a list or `tag:<tag>`. Exit code first. Still running after `wait` seconds: returns a job id (`wait=0` is async). |
 | `read(id, wait?, range?, grep?, signal?)` | Long-polls a job for new lines, pages a saved output, or reads a remote file. |
 | `transfer(source, dest)` | Copies files between `local:<path>` and `<target>:<path>`, checked by sha256. |
@@ -96,7 +97,7 @@ in sync with the code.
 # Agent commands (same output as the MCP tools)
 
 conn targets [--check] [filter]
-    List targets: name, OS, shell, user, tags, mode. Never hosts or secrets.
+    List targets: name, OS, shell, host, user, tags, mode. Never secrets.
 
 conn run [--wait WAIT] [--timeout TIMEOUT] [--cwd CWD] [--shell] [-t]
                 [--max-bytes MAX_BYTES] [--grep GREP]
@@ -110,6 +111,11 @@ conn read [--wait WAIT] [--range RANGE] [--grep GREP] [--signal {INT,TERM,KILL}]
 
 conn transfer source dest
     Copy files: local:<path> to <target>:<path>, or back. sha256 checked.
+
+# At a terminal
+
+conn ssh target
+    Human only: an interactive shell on a target, with its login, key, port and jump hosts.
 
 # Targets (conn targets <verb>)
 
@@ -207,7 +213,7 @@ takes it back. Every command, answer and rule change lands in a hash-chained aud
 - Secrets travel over stdin or the SSH channel's env, never argv. Output is redacted before it is saved.
 - Remote output is marked untrusted. Shell wrappers (`sh -c`, `python -c`, `sudo`...) and shell syntax
   (`;`, `|`, `$(...)`) always ask.
-- `conn mcp install` also denies the agent raw `ssh`/`scp`, so it can't go around Conning (pi has no
+- `conn mcp install` also denies the agent raw `ssh`/`scp` and `conn ssh`, so it can't go around Conning (pi has no
   permission rules, so there it only adds the server).
 - The audit log is hash-chained. It runs as your user, so it is tamper-evident, not tamper-proof.
 

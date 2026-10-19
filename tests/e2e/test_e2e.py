@@ -176,12 +176,12 @@ def conn(tmp_path_factory):
 def test_an_agent_proposes_a_target_and_a_human_approves_it(tmp_path):
     c = Conn(tmp_path)
     assert "saved as pending" in c("targets", "add", "new", *SSHD, "--auth", "key", "--key", KEY)
-    assert re.search(r"new\s+linux\s+bash\s+user=conning-e2e .*mode=pending", c("targets"))
+    assert re.search(r"new\s+linux\s+bash\s+host=127.0.0.1:\d+\s+user=conning-e2e .*mode=pending", c("targets"))
     assert c("run", "new", "uname", "-s").startswith("blocked  new  (target is pending")
     assert "needs a human" in c("approve", "new")
     out = c.human("approve", "new", answers="y\n")
     assert "host key ssh-ed25519" in out and "new is live: linux bash mode=ask" in out
-    assert re.search(r"new\s+linux\s+bash\s+user=conning-e2e .*reach=ok", c("targets", "--check"))
+    assert re.search(r"new\s+linux\s+bash\s+host=127.0.0.1:\d+\s+user=conning-e2e .*reach=ok", c("targets", "--check"))
     assert "new: ok, linux bash, host key pinned" in c("targets", "test", "new")
 
 
@@ -293,6 +293,9 @@ def test_a_target_behind_a_jump_host(tmp_path):
     assert f"{USER}@localhost:{PORT}  via gw" in out and "inner is live: linux bash" in out, out
     assert "conning-e2e" in c("run", "inner", "whoami")
     assert re.search(r"inner .*reach=ok", c("targets", "--check"))
+    term = c.terminal("ssh", "inner")
+    term.send("echo inside-$((2 + 2)); exit\n")
+    assert "inside-4" in term.finish() and term.proc.returncode == 0
     blob = tmp_path / "blob.txt"
     blob.write_text("through the bastion")
     assert "sha256 verified" in c("transfer", f"local:{blob}", f"inner:{REMOTE}-jumped.txt")
@@ -384,6 +387,14 @@ def test_a_human_runs_live_in_a_pty(conn):
     assert "needs approval on lab" in out and "/dev/pts/" in out
     assert "loading\rdone" in out and "got handler" in out
     assert "--tty needs a terminal" in conn("run", "-t", "lab", "tty")
+
+
+def test_a_human_opens_a_shell(conn):
+    term = conn.terminal("ssh", "lab")
+    term.send("echo shell-$((6 * 7)); tty; exit 3\n")
+    out = term.finish()
+    assert "shell-42" in out and "/dev/pts/" in out and term.proc.returncode == 3, out
+    assert "conn ssh needs a terminal" in conn("ssh", "lab")
 
 
 def test_run_options(conn):
@@ -566,7 +577,7 @@ def test_the_mcp_server_gives_the_same_answers(conn):
     tools, ran, listed = mcp_session(conn.env, work)
     assert tools == ["read", "run", "targets", "transfer"]
     assert ran.startswith("exit=0") and "Linux" in ran
-    assert "lab" in listed and "127.0.0.1" not in listed  # never the host
+    assert "lab" in listed and f"host=127.0.0.1:{PORT}" in listed and "keychain" not in listed  # D59
 
 
 def test_approving_in_the_agent_client(conn):

@@ -336,7 +336,7 @@ def test_targets_shows_why_a_target_is_pending(core, transport, keyscan):
     admin.add(core, FakeIO("y"), "lab", host="192.0.2.10", user="u", auth="ssh-agent")
     line = core.targets()
     assert "mode=pending (login check failed: ssh: connect to host <host> port 22" in line
-    assert "192.0.2.10" not in line
+    assert line.count("192.0.2.10") == 1  # in host=, not repeated in the reason
     transport.canned["uname -s"] = (0, b"Linux\n")
     assert admin.approve(core, FakeIO("y"), "lab") == 0
     assert core.targets().endswith("mode=ask")

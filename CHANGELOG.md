@@ -23,6 +23,8 @@ Ready for MCP gateways and managed clients. The four tools are unchanged: no too
   (`conning mcp serve --no-approve-in-client`).
 - `conn mcp install <client> --skill-only` writes the skill and the deny rules but no server entry, for
   environments where the operator owns the MCP config.
+- `conn ssh` sends an unusual `TERM` (such as Ghostty's `xterm-ghostty`) as `xterm-256color`, so
+  Backspace works on targets that don't know it.
 - New `docs/managed.md` (launch, flags, environment variables, prerequisites, tool annotations) and
   `SECURITY.md` (credentials, human-only actions, threat model, reporting a vulnerability).
 

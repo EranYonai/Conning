@@ -2,6 +2,7 @@
 
 import json
 
+import pytest
 from conftest import target, write_targets
 from test_admin import FakeIO
 
@@ -25,6 +26,29 @@ def test_cli_opens_a_shell_and_audits_it(core, transport, monkeypatch, capsys):
 def test_ssh_shell_swaps_in_a_tty_and_allows_a_passphrase():
     script = 'test "$*" = "-t -o BatchMode=no conning-target"'
     assert ssh.shell(ssh.Connection(["sh", "-c", script, "sh", "-T", "conning-target"], {}, [])) == 0
+
+
+@pytest.mark.parametrize("term, sent", [("xterm-ghostty", "xterm-256color"), ("screen", "screen"), (None, None)])
+def test_an_unusual_terminal_type_is_sent_as_xterm_256color(monkeypatch, term, sent):
+    seen = []
+
+    class Ssh:
+        def __init__(self, argv, env):
+            seen.append(env.get("TERM"))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            pass
+
+        def wait(self):
+            return 0
+
+    monkeypatch.setattr(ssh.subprocess, "Popen", Ssh)
+    env = {"TERM": term} if term else {}
+    assert ssh.shell(ssh.Connection(["ssh", "-T", "conning-target"], env, [])) == 0
+    assert seen == [sent] and env.get("TERM") == term  # the shared connection's env is left alone
 
 
 def test_ctrl_c_is_left_to_ssh(monkeypatch):

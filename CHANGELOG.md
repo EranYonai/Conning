@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.6.4 (2026-10-19)
+
+Ready for MCP gateways and managed clients. The four tools are unchanged: no tool was added or renamed.
+
+- Every tool has a title and explicit annotations:
+  - `targets`: "List targets"; readOnlyHint true, openWorldHint true.
+  - `run`: "Run a command"; readOnlyHint false, destructiveHint true, openWorldHint true.
+  - `read`: "Read a job, output, approval or file"; readOnlyHint false, destructiveHint false,
+    idempotentHint false, openWorldHint true. It keeps `signal`, since reading `a:<id>` already starts
+    an approved command.
+  - `transfer`: "Copy files"; readOnlyHint false, destructiveHint true, openWorldHint true.
+- Every parameter has a description, and each tool says what it touches, whether it can return
+  `status=pending_approval`, and that remote content is untrusted. Generated titles and `null`
+  branches are gone from the schemas, which grow from 2,454 to 3,286 characters.
+- A client that declares url-only elicitation now gets `status=pending_approval`, as one without
+  elicitation does, instead of an error.
+- `--approve-in-client` / `--no-approve-in-client` may also follow `serve`
+  (`conning mcp serve --no-approve-in-client`).
+- `conn mcp install <client> --skill-only` writes the skill and the deny rules but no server entry, for
+  environments where the operator owns the MCP config.
+- New `docs/managed.md` (launch, flags, environment variables, prerequisites, tool annotations) and
+  `SECURITY.md` (credentials, human-only actions, threat model, reporting a vulnerability).
+
 ## 0.6.3 (2026-10-19)
 
 - `conn ssh <target>` opens an interactive shell on a target with its Conning settings: user, key or

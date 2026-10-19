@@ -594,9 +594,15 @@ def test_approving_in_the_agent_client(conn):
 
     assert mcp_session(conn.env, work, on_elicit=on_elicit).count("exit=0") == 1
     assert f"touch {REMOTE}-client" in asked[0]
-    command = (sys.executable, "-m", "conning", "mcp", "--no-approve-in-client")
-    assert "status=pending_approval" in mcp_session(conn.env, work, command, on_elicit)
+    command = (sys.executable, "-m", "conning", "mcp", "serve", "--no-approve-in-client")  # D61: out of band
+    approval = pending_id(mcp_session(conn.env, work, command, on_elicit))
     assert len(asked) == 1
+    assert "exit=0" in conn.human("approve", f"a:{approval}", answers="a\n")
+
+    async def poll(s):
+        return await call(s, "read", id=f"a:{approval}")
+
+    assert "exit=0" in mcp_session(conn.env, poll, command, on_elicit)
 
 
 def test_mcp_install_for_every_client(conn, tmp_path):

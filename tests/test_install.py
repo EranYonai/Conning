@@ -151,10 +151,13 @@ def test_unreadable_config_changes_nothing(fake_home):
 
 def test_cli_wiring(fake_home, monkeypatch):
     seen = []
-    monkeypatch.setattr(install, "install", lambda io, client, dry_run: seen.append((client, dry_run)) or 0)
+    monkeypatch.setattr(install, "install", lambda io, client, **kw: seen.append((client, kw)) or 0)
     assert cli.main(["mcp", "install", "codex", "--dry-run"]) == 0
-    assert cli.main(["mcp", "install", "cursor"]) == 0
-    assert seen == [("codex", True), ("cursor", False)]
+    assert cli.main(["mcp", "install", "cursor", "--skill-only"]) == 0
+    assert seen == [
+        ("codex", {"dry_run": True, "skill_only": False}),
+        ("cursor", {"dry_run": False, "skill_only": True}),
+    ]
     assert Path(fake_home).exists()
 
 
@@ -219,3 +222,23 @@ def test_every_client_gets_the_shipped_skill(fake_home, no_claude, monkeypatch, 
     io = FakeIO(tty=False)
     install.install(io, client)
     assert io.said[0] == f"wrote {skill}" and skill.read_text() == shipped
+
+
+@pytest.mark.parametrize("client", ["claude", "codex", "cursor", "opencode", "pi"])
+def test_skill_only_leaves_the_server_entry_to_the_operator(fake_home, monkeypatch, client):
+    """D61: in a managed environment the operator owns the MCP config; the skill and deny rules still go in."""
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.setattr(install.shutil, "which", lambda name: "/bin/claude")
+    monkeypatch.setattr(install.subprocess, "run", lambda *a, **k: pytest.fail("ran a command"))
+    io = FakeIO(tty=False)
+    assert install.install(io, client, skill_only=True) == 0
+    written = {Path(line.removeprefix("wrote ")) for line in io.said if line.startswith("wrote ")}
+    assert any(p.name == "SKILL.md" for p in written)
+    for path in written:
+        text = path.read_text()
+        assert "/opt/bin/conn" not in text and "mcp_servers" not in text and "mcpServers" not in text
+    rules = {"claude": "Bash(ssh *)", "codex": '["ssh"]', "cursor": "Shell(ssh)", "opencode": '"ssh *": "deny"'}
+    if client in rules:
+        assert any(rules[client] in p.read_text() for p in written)
+    else:
+        assert len(written) == 1  # pi has no rules: only the skill

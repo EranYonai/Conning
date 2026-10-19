@@ -76,6 +76,12 @@ writes there stay yours on the host. On Docker Desktop for Mac, forward the agen
 
 Targets on a lab LAN or VPN need `--network host` (Linux) or a route the container can use.
 
+### Or behind an MCP gateway
+
+Pin a version and launch it yourself: `uvx -q --from conning==<version> conning mcp serve --no-approve-in-client`.
+[docs/managed.md](docs/managed.md) has the flags, every environment variable and the tools' annotations;
+[SECURITY.md](SECURITY.md) has the threat model and how to report a vulnerability.
+
 ## The agent's four tools
 
 | Tool | What it does |
@@ -241,6 +247,8 @@ After changing the CLI, refresh the README block with `uv run conn help --markdo
 - [docs/blog.html](docs/blog.html): the development blog, from the first idea to today.
 - [docs/manual-test.md](docs/manual-test.md): a ten-minute check of every feature against a throwaway target.
 - [docs/field-test.md](docs/field-test.md): using it for real work, and how to report what gets in the way.
+- [docs/managed.md](docs/managed.md): running the server behind an MCP gateway or in a managed client.
+- [SECURITY.md](SECURITY.md): what Conning protects, what it doesn't, and how to report a vulnerability.
 
 ## License
 

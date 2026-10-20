@@ -242,6 +242,14 @@ After changing the CLI, refresh the README block with `uv run conn help --markdo
 - [docs/manual-test.md](docs/manual-test.md): a ten-minute check of every feature against a throwaway target.
 - [docs/field-test.md](docs/field-test.md): using it for real work, and how to report what gets in the way.
 
+## Why Python
+
+Python is the easiest thing to install on a developer's machine and the language most of the AI
+tooling around it is written in. `uvx conning mcp` runs with no prior install, `pip`/`pipx`/`uv`
+are already there, and the MCP SDK, keychain bindings and agent clients all live in the same
+ecosystem. Go or Rust would give a single binary, but Conning drives the real OpenSSH binary and
+mostly waits on the network, so their speed buys little here.
+
 ## License
 
 [Apache-2.0](LICENSE)

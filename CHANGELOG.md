@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.4 (2026-10-20)
+
+- `conn ssh` works from terminals with their own terminal type, such as Ghostty (`xterm-ghostty`) or kitty:
+  an unusual `TERM` is sent as `xterm-256color`, so Backspace and line editing work on targets that don't
+  know it.
+- README: a "Why Python" section.
+
 ## 0.6.3 (2026-10-19)
 
 - `conn ssh <target>` opens an interactive shell on a target with its Conning settings: user, key or

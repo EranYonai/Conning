@@ -4,6 +4,7 @@ from dataclasses import replace
 import pytest
 from conftest import needs_sh, target, write_targets
 
+from conning import audit
 from conning.state import Approval, Job
 
 ALLOW_ECHO = (("echo",), ("sleep",), ("printf",), ("cat",))
@@ -137,6 +138,7 @@ def test_signal_stops_a_running_job(core):
             break
         time.sleep(0.05)
     assert core.read(f"j:{job_id}", signal="TERM") == f"signal=TERM sent to j:{job_id}"
+    assert audit.tail(1)[0][0]["event"] == "signal"
     assert core.read(f"j:{job_id}", wait=10).startswith("exit=143")
     assert core.read(f"j:{job_id}", signal="TERM").startswith("error: ")
 
@@ -482,3 +484,17 @@ def test_a_job_finished_elsewhere_during_a_poll_is_not_saved_as_running(core, tr
     transport.exec = exec_
     core._drain(stale, core.clock() + 5)
     assert stale.rc == 0 and Job.load(stale.id).rc == 0
+
+
+def test_transfer_wont_copy_conning_files_or_ssh_keys(core, home, tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))  # Path.home() on Windows
+    key = tmp_path / "keys" / "lab_ed25519"
+    key.parent.mkdir()
+    key.write_text("k")
+    write_targets(replace(lab(), key=str(key)))
+    refused = "transfer won't copy it"
+    for dest in (home / "targets.toml", home, tmp_path / ".ssh" / "id_ed25519", key):
+        assert refused in core.transfer("lab:/tmp/f", f"local:{dest}"), dest
+    for source in (key, home, tmp_path):  # tmp_path holds the config dir
+        assert refused in core.transfer(f"local:{source}", "lab:/tmp/f"), source

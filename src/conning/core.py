@@ -391,6 +391,7 @@ class Core:
                 rc, out = self._script(t, (remote.posix_signal if job.posix else remote.pwsh_signal)(job_id, signal))
             except (SSHError, SecretError, ValueError) as e:
                 return f"error: {e}"
+            audit.record("signal", target=t.name, job=job_id, signal=signal, rc=rc)
             return f"signal={signal} sent to j:{job_id}" if rc == 0 else f"error: {out.decode(errors='replace')}"
         self._drain(job, self.clock() + max(0, wait))
         return self._job_result(job, max_bytes, grep)
@@ -475,6 +476,8 @@ class Core:
             return f"error: local:{local_path} does not exist"
         if not upload and local_path.is_dir():
             local_path = local_path / Path(remote_path.replace("\\", "/")).name
+        if _guarded(local_path, self.load().values(), upload):
+            return f"error: local:{local_path} holds Conning's own files or an ssh key; transfer won't copy it"
         try:
             rc, out = self.transport.copy(t, local_path, remote_path, upload=upload)
         except (SSHError, SecretError) as e:
@@ -494,6 +497,14 @@ class Core:
         if rc != 0 or remote_sum != local_sum:
             return f"error: sha256 mismatch after copy (local {local_sum[:12]}, remote {remote_sum[:12] or '?'})"
         return f"ok 1 file, {_human(local_path.stat().st_size)}, sha256 verified"
+
+
+def _guarded(path: Path, targets, upload: bool) -> bool:
+    """In or holding the config or state dir, ~/.ssh or a key file: copying would leak a key or change trust (D62)."""
+    path = path.resolve()
+    guarded = [p.resolve() for p in (paths.config_dir(), paths.state_dir(), Path.home() / ".ssh")]
+    guarded += [Path(t.key).expanduser().resolve() for t in targets if t.key]
+    return any(path.is_relative_to(g) or (upload and g.is_relative_to(path)) for g in guarded)
 
 
 def _finished_elsewhere(job: Job) -> bool:

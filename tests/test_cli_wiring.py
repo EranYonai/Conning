@@ -111,7 +111,10 @@ def test_mcp_serve(monkeypatch):
     monkeypatch.setattr(server, "build_server", lambda approve_in_client: flags.append(approve_in_client) or Server())
     assert cli.main(["mcp"]) == 0 and cli.main(["mcp", "serve"]) == 0
     assert cli.main(["mcp", "--no-approve-in-client"]) == 0
-    assert ran == ["stdio", "stdio", "stdio"] and flags == [True, True, False]
+    assert cli.main(["mcp", "serve", "--no-approve-in-client"]) == 0  # how operators write launch args
+    assert cli.main(["mcp", "--no-approve-in-client", "serve"]) == 0  # not reset by serve's default
+    assert cli.main(["mcp", "--no-approve-in-client", "serve", "--approve-in-client"]) == 0
+    assert ran == ["stdio"] * 6 and flags == [True, True, False, False, False, True]
 
 
 def test_real_core_and_io_factories(home):

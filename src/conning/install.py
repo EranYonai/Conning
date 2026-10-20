@@ -3,8 +3,10 @@
 Each client gets the MCP server entry plus permission rules that refuse raw `ssh`, `scp` and `sftp`,
 the human-only `conn` commands, and reads of Conning's config dir (D44, D45); pi has no rules to write.
 Each also gets the Conning skill (D57), from the copy shipped in this package, in its skills folder.
-Files are merged, never replaced: what is already there stays, a backup of each changed file is kept
-next to it, and a second run changes nothing. Rules in an agent's settings are a guardrail, not a
+With `--skill-only` (D61) the server entry is left to whoever owns the client's MCP config, as in a
+managed environment; the skill and the rules are still written. Files are merged, never replaced:
+what is already there stays, a backup of each changed file is kept next to it, and a second run
+changes nothing. Rules in an agent's settings are a guardrail, not a
 sandbox: they match the command the agent writes (`/usr/bin/ssh` or `sh -c 'ssh ...'` slip past), so
 the real wall stays Conning's own toolset.
 """
@@ -80,7 +82,7 @@ def _claude_dir() -> Path:
     return Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
 
 
-def plan_claude(command: list[str]) -> Plan:
+def plan_claude(command: list[str] | None) -> Plan:
     plan = Plan()
     config = _home_relative(paths.config_dir(), "//")
     rules = [f"Bash({p} *)" for p in DENIED_PROGRAMS] + [f"Bash(conn {c} *)" for c in HUMAN_ONLY]
@@ -90,6 +92,8 @@ def plan_claude(command: list[str]) -> Plan:
     if _merge_deny(data, rules):
         plan.writes[settings] = _dump_json(data)
     _add_skill(plan, _claude_dir() / "skills")
+    if command is None:
+        return plan
     claude = shutil.which("claude")
     if claude is None:
         add = "claude mcp add --scope user conning -- " + " ".join(command)
@@ -107,11 +111,11 @@ def _toml_string(text: str) -> str:
     return json.dumps(text)  # a JSON string is a valid TOML basic string
 
 
-def plan_codex(command: list[str]) -> Plan:
+def plan_codex(command: list[str] | None) -> Plan:
     plan = Plan()
     config = _codex_dir() / "config.toml"
     text = config.read_text(encoding="utf-8") if config.exists() else ""
-    if "[mcp_servers.conning]" not in text:
+    if command and "[mcp_servers.conning]" not in text:
         block = (
             "\n[mcp_servers.conning]\n"
             f"command = {_toml_string(command[0])}\n"
@@ -133,19 +137,20 @@ def plan_codex(command: list[str]) -> Plan:
     return plan
 
 
-def _add_server(plan: Plan, path: Path, entry: dict) -> None:
+def _add_server(plan: Plan, path: Path, command: list[str] | None, **entry) -> None:
     """Add `conning` to the `mcpServers` object most clients share (Cursor, pi)."""
+    if command is None:
+        return
+    entry |= {"command": command[0], "args": command[1:]}
     data = _load_json(path)
     if "conning" not in data.setdefault("mcpServers", {}):
         data["mcpServers"]["conning"] = entry
         plan.writes[path] = _dump_json(data)
 
 
-def plan_cursor(command: list[str]) -> Plan:
+def plan_cursor(command: list[str] | None) -> Plan:
     plan = Plan()
-    _add_server(
-        plan, Path.home() / ".cursor" / "mcp.json", {"type": "stdio", "command": command[0], "args": command[1:]}
-    )
+    _add_server(plan, Path.home() / ".cursor" / "mcp.json", command, type="stdio")
     cli = Path.home() / ".cursor" / "cli-config.json"
     data = _load_json(cli)
     if not data:
@@ -159,14 +164,15 @@ def plan_cursor(command: list[str]) -> Plan:
     return plan
 
 
-def plan_opencode(command: list[str]) -> Plan:
+def plan_opencode(command: list[str] | None) -> Plan:
     """opencode: the server under `mcp`, and deny rules under `permission`, where the last match wins."""
     plan = Plan()
     path = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "opencode" / "opencode.json"
     _add_skill(plan, path.parent / "skills")
     data = _load_json(path)
     before = _dump_json(data)
-    data.setdefault("mcp", {}).setdefault("conning", {"type": "local", "command": command, "enabled": True})
+    if command:
+        data.setdefault("mcp", {}).setdefault("conning", {"type": "local", "command": command, "enabled": True})
     permission = data.get("permission") or {}
     data["permission"] = permission = permission if isinstance(permission, dict) else {"*": permission}
     config = _home_relative(paths.config_dir(), "/")
@@ -186,9 +192,9 @@ def plan_opencode(command: list[str]) -> Plan:
     return plan
 
 
-def plan_pi(command: list[str]) -> Plan:
+def plan_pi(command: list[str] | None) -> Plan:
     plan = Plan()
-    _add_server(plan, Path.home() / ".pi" / "agent" / "mcp.json", {"command": command[0], "args": command[1:]})
+    _add_server(plan, Path.home() / ".pi" / "agent" / "mcp.json", command)
     _add_skill(plan, Path.home() / ".pi" / "agent" / "skills")
     plan.notes.append("pi has no permission rules; it can still run ssh itself (a pi extension can block it)")
     return plan
@@ -197,9 +203,9 @@ def plan_pi(command: list[str]) -> Plan:
 PLANNERS = {"claude": plan_claude, "codex": plan_codex, "cursor": plan_cursor, "opencode": plan_opencode, "pi": plan_pi}
 
 
-def install(io, client: str, *, dry_run: bool = False) -> int:
+def install(io, client: str, *, dry_run: bool = False, skill_only: bool = False) -> int:
     try:
-        plan = PLANNERS[client](server_command())
+        plan = PLANNERS[client](None if skill_only else server_command())
     except (OSError, ValueError) as e:
         io.say(f"error: can't read the {client} config: {e}; nothing changed")
         return 1

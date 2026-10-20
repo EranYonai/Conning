@@ -118,6 +118,7 @@ def describe(e: dict) -> str:
         "approved": lambda: f"approved a:{e.get('id')}  by {e.get('by')}" + (" (always)" if e.get("always") else ""),
         "denied": lambda: f"denied   a:{e.get('id')}  by {e.get('by')}",
         "transfer": lambda: f"transfer {e.get('source')} -> {e.get('dest')}  ({e.get('result', '')})",
+        "signal": lambda: f"signal   {target}  j:{e.get('job')}  {e.get('signal')}",
         "read-file": lambda: f"read     {target}:{e.get('path')}",
         "target": lambda: f"target   {target}  {e.get('change')}",
         "ssh": lambda: f"ssh      {target}  " + (f"closed exit={e['rc']}" if "rc" in e else "opened"),

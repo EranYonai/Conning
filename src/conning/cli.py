@@ -88,7 +88,7 @@ def _mcp(args: argparse.Namespace) -> int:
 
         build_server(approve_in_client=args.approve_in_client).run("stdio")
         return 0
-    return install.install(_io(), args.client, dry_run=args.dry_run)
+    return install.install(_io(), args.client, dry_run=args.dry_run, skill_only=args.skill_only)
 
 
 HANDLERS = {
@@ -237,17 +237,18 @@ def build_parser() -> Parser:
     sp.add_argument("--no-prompt", action="store_true", help="show activity only; never ask")
     cmd("doctor", "Check this machine's setup: config and state dirs, ssh, keychain, targets.")
     sp = cmd("mcp", "Run the MCP server on stdio, or install it into an agent client.")
-    sp.add_argument(
-        "--approve-in-client",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="ask the human in the agent client (MCP elicitation) when a command needs approval",
-    )
+    approve = {
+        "action": argparse.BooleanOptionalAction,
+        "help": "ask the human in the agent client (MCP elicitation) when a command needs approval",
+    }
+    sp.add_argument("--approve-in-client", default=True, **approve)
     mcp_sub = sp.add_subparsers(dest="mcp_command", metavar="<serve|install>")
-    mcp_sub.add_parser("serve", help="run the MCP server on stdio (the default)")
+    serve = mcp_sub.add_parser("serve", help="run the MCP server on stdio (the default)")
+    serve.add_argument("--approve-in-client", default=argparse.SUPPRESS, **approve)  # keeps a value given before
     sp = mcp_sub.add_parser("install", help="add Conning and its skill to an agent client, and deny it raw ssh/scp")
     sp.add_argument("client", choices=list(install.PLANNERS))
     sp.add_argument("--dry-run", action="store_true", help="show what would change")
+    sp.add_argument("--skill-only", action="store_true", help="the skill and deny rules, not the server entry")
 
     sp = cmd("completion", "Tab completion that reads the target; conn completion install turns it on in your shell.")
     sp.add_argument("shell", choices=[*complete.SHELLS, "install"], help="install: add it to your shell's rc file")

@@ -284,7 +284,7 @@ def close_shared_connection(c: Conn, name: str) -> None:
     subprocess.run(["ssh", "-F", str(conf), "-O", "exit", "conning-target"], capture_output=True)
 
 
-def test_a_target_behind_a_jump_host(tmp_path):
+def test_a_target_behind_a_jump_host(tmp_path, tmp_path_factory):
     c = Conn(tmp_path)
     add_live(c, "gw", "--auth", "key", "--key", KEY)
     inner = ("--host", "localhost", "--port", PORT, "--user", USER, "--auth", "key", "--key", KEY)
@@ -296,7 +296,7 @@ def test_a_target_behind_a_jump_host(tmp_path):
     term = c.terminal("ssh", "inner")
     term.send("echo inside-$((2 + 2)); exit\n")
     assert "inside-4" in term.finish() and term.proc.returncode == 0
-    blob = tmp_path / "blob.txt"
+    blob = tmp_path_factory.mktemp("work") / "blob.txt"  # outside CONNING_HOME, which transfer refuses
     blob.write_text("through the bastion")
     assert "sha256 verified" in c("transfer", f"local:{blob}", f"inner:{REMOTE}-jumped.txt")
     assert "inner jump through gw" in c("targets", "rm", "gw")
@@ -594,9 +594,15 @@ def test_approving_in_the_agent_client(conn):
 
     assert mcp_session(conn.env, work, on_elicit=on_elicit).count("exit=0") == 1
     assert f"touch {REMOTE}-client" in asked[0]
-    command = (sys.executable, "-m", "conning", "mcp", "--no-approve-in-client")
-    assert "status=pending_approval" in mcp_session(conn.env, work, command, on_elicit)
+    command = (sys.executable, "-m", "conning", "mcp", "serve", "--no-approve-in-client")  # D61: out of band
+    approval = pending_id(mcp_session(conn.env, work, command, on_elicit))
     assert len(asked) == 1
+    assert "exit=0" in conn.human("approve", f"a:{approval}", answers="a\n")
+
+    async def poll(s):
+        return await call(s, "read", id=f"a:{approval}")
+
+    assert "exit=0" in mcp_session(conn.env, poll, command, on_elicit)
 
 
 def test_mcp_install_for_every_client(conn, tmp_path):

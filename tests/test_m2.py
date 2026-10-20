@@ -491,6 +491,28 @@ def test_client_prompt_is_on_by_default_and_needs_capability(home):
     assert seen == [] and "status=pending_approval" in text
 
 
+def test_url_only_elicitation_falls_back_to_pending(home, monkeypatch):
+    """A client that can only open URLs can't show the question: the call returns pending, not an error."""
+    import mcp_types
+    from mcp.client.session import ClientSession
+
+    full = ClientSession._build_capabilities
+
+    def url_only(self, version):
+        caps = full(self, version)
+        if caps.elicitation:
+            caps.elicitation = mcp_types.ElicitationCapability(url=mcp_types.UrlElicitationCapability())
+        return caps
+
+    monkeypatch.setattr(ClientSession, "_build_capabilities", url_only)
+    for mode in ("auto", "legacy"):
+        engine = EngineStub()
+        text, seen = call_run(server.build_server(engine), answer("accept", "once"), mode=mode)
+        assert seen == [] and text.endswith(
+            f"status=pending_approval id=a:{engine.approval.id} targets=lab (not on the allowlist)"
+        )
+
+
 def test_client_prompt_only_when_the_command_would_wait(home):
     text, seen = call_run(server.build_server(EngineStub(asks=())), answer("accept", "once"))
     assert text == "exit=0 dur=0.1s" and seen == []

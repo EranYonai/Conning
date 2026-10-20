@@ -11,7 +11,7 @@ never raw `ssh`, `scp` or `sftp`: going around Conning skips the human's approva
 
 ## Find the target
 
-- `targets()` lists each target: name, OS, shell, user, tags, mode. Call it first, and pick commands
+- `targets()` lists each target: name, OS, shell, host, user, tags, mode. Call it first, and pick commands
   for the target's OS and shell (PowerShell on Windows).
 - `targets(check=true)` probes reachability. `filter` takes names or `tag:<tag>`.
 - A target that is not listed doesn't exist yet. Ask the human to add it (`conn targets add <name>`);

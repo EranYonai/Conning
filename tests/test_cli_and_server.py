@@ -27,4 +27,27 @@ def test_server_has_exactly_four_tools_and_a_small_schema():
     assert sorted(t.name for t in tools) == ["read", "run", "targets", "transfer"]
     assert all(t.output_schema is None for t in tools)  # results are text only, never sent twice (D50)
     size = len(json.dumps([t.model_dump(by_alias=True, exclude_none=True) for t in tools]))
-    assert size < 2600, f"tool schemas grew to {size} chars; every char costs context on every turn"
+    assert size < 3350, f"tool schemas grew to {size} chars; every char costs context on every turn"
+
+
+def test_tools_carry_titles_and_annotations():
+    """D60: a gateway approves tools by these; the spec assumes destructive and open-world when unset."""
+    tools = {t.name: t for t in asyncio.run(build_server().list_tools())}
+    hints = {n: t.annotations.model_dump(by_alias=True, exclude_none=True) for n, t in tools.items()}
+    assert hints == {
+        "targets": {"readOnlyHint": True, "openWorldHint": True},
+        "run": {"readOnlyHint": False, "destructiveHint": True, "openWorldHint": True},
+        "read": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": True},
+        "transfer": {"readOnlyHint": False, "destructiveHint": True, "openWorldHint": True},
+    }
+    assert {n: t.title for n, t in tools.items()} == {
+        "targets": "List targets",
+        "run": "Run a command",
+        "read": "Read a job, output, approval or file",
+        "transfer": "Copy files",
+    }
+    for t in tools.values():
+        assert "title" not in t.input_schema
+        assert all(
+            set(p) & {"title", "anyOf"} == set() and p["description"] for p in t.input_schema["properties"].values()
+        )

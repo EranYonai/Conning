@@ -1,9 +1,11 @@
+import os
 import time
 from dataclasses import replace
 
 import pytest
 from conftest import needs_sh, target, write_targets
 
+from conning import paths, state
 from conning.state import Approval, Job
 
 ALLOW_ECHO = (("echo",), ("sleep",), ("printf",), ("cat",))
@@ -246,7 +248,43 @@ def test_read_approval_long_polls_until_decided(home, transport):
         a.save()
 
     c = Core(transport=transport, clock=lambda: clock[0], sleep=sleep)
-    assert c.read("a:ee55", wait=5).startswith("status=denied")
+    with state.watching():
+        assert c.read("a:ee55", wait=5).startswith("status=denied")
+
+
+def test_read_approval_returns_at_once_when_nobody_watches(home, transport):
+    from conning.core import Core
+
+    Approval(id="ee66", targets=["lab"], command="reboot now", argv=None, cwd=None, timeout=60).save()
+    slept = []
+    c = Core(transport=transport, sleep=slept.append)
+    out = c.read("a:ee66", wait=60)
+    assert out == (
+        "status=pending_approval id=a:ee66 "
+        "(nobody is watching: ask the user to run conn approve a:ee66, then read a:ee66)"
+    )
+    assert slept == []  # nobody to answer, so no long-poll
+
+
+def test_run_pending_hint_depends_on_a_watcher(core):
+    write_targets(lab(allow=()))
+    out = core.run("lab", argv=["reboot"])
+    assert "nobody is watching: ask the user to run conn approve a:" in out
+    with state.watching():
+        out = core.run("lab", argv=["reboot"])
+    assert "human runs: conn approve a:" in out and out.endswith(out.split("id=a:")[1].split()[0])
+
+
+def test_a_stale_or_ended_watcher_does_not_count(home):
+    assert not state.someone_watching()
+    with state.watching(interval=0.01):
+        assert state.someone_watching()
+    assert not state.someone_watching()  # removed on exit
+    crashed = paths.state_dir() / "watchers" / "999999"
+    crashed.touch()
+    old = time.time() - state.WATCH_FRESH - 1
+    os.utime(crashed, (old, old))
+    assert not state.someone_watching()  # a watcher that died without cleaning up
 
 
 @needs_sh

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.5 (2026-10-27)
+
+- An agent no longer waits silently on an approval nobody was asked for. `read a:<id>` long-polls only
+  while a `conn watch` is open; otherwise it returns at once with `nobody is watching: ask the user to
+  run conn approve a:<id>, then read a:<id>`, and `run` says the same when it queues the command. The
+  skill and the server instructions tell the agent to stop and ask.
+
 ## 0.6.4 (2026-10-20)
 
 - `conn ssh` works from terminals with their own terminal type, such as Ghostty (`xterm-ghostty`) or kitty:

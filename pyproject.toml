@@ -1,6 +1,6 @@
 [project]
 name = "conning"
-version = "0.6.4"
+version = "0.6.5"
 description = "A light, local SSH controller for humans and agents: a CLI and MCP server that run commands on your test machines without the agent ever seeing a secret."
 readme = "README.md"
 license = "Apache-2.0"

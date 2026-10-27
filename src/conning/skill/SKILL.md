@@ -46,6 +46,8 @@ Files are checked by sha256, and directories copy whole.
   approval.
 - `status=pending_approval id=a:<id>` means the human hasn't decided. Tell them what you want to run
   and why, then poll with `read("a:<id>", wait=60)`. Don't retry the command another way.
+- `nobody is watching` in that line means no `conn watch` is open, so `read` returns at once instead
+  of waiting. Stop and ask the user to run `conn approve a:<id>` in their terminal, then read it again.
 - `status=denied` is final for that command. Ask the human; don't look for a variant that slips by.
 - Never run `conn approve`, `conn allow`, `conn targets mode` or `conn targets rename`: trust is the
   human's to grant.

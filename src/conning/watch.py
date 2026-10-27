@@ -8,7 +8,7 @@ never touches a target and can run next to any number of agents.
 import time
 from collections.abc import Callable
 
-from conning import admin, audit
+from conning import admin, audit, state
 from conning.core import Core
 from conning.state import Job, output_logs, pending_approvals
 
@@ -35,20 +35,21 @@ def watch(
     if prompt and not io.tty:
         io.say("(no terminal: showing activity only; approve with conn approve a:<id>)")
     io.say("watching; Ctrl-C to stop")
-    while ticks is None or ticks > 0:
-        entries, offset = audit.read_from(offset)
-        for e in entries:
-            io.say(audit.describe(e))
-        for path in output_logs():
-            _show_new_output(io, path, sizes)
-        if prompt and io.tty:
-            for a in pending_approvals():
-                if a.id not in asked:
-                    asked.add(a.id)
-                    admin.approve(core, io, f"a:{a.id}")
-        if ticks is not None:
-            ticks -= 1
-        sleep(1)
+    with state.watching():  # an agent's read of a pending approval waits only while someone watches
+        while ticks is None or ticks > 0:
+            entries, offset = audit.read_from(offset)
+            for e in entries:
+                io.say(audit.describe(e))
+            for path in output_logs():
+                _show_new_output(io, path, sizes)
+            if prompt and io.tty:
+                for a in pending_approvals():
+                    if a.id not in asked:
+                        asked.add(a.id)
+                        admin.approve(core, io, f"a:{a.id}")
+            if ticks is not None:
+                ticks -= 1
+            sleep(1)
     return 0
 
 

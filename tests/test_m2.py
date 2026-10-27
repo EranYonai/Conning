@@ -8,7 +8,7 @@ import pytest
 from conftest import needs_pwsh, needs_sh, target, write_targets
 from test_admin import FakeIO
 
-from conning import admin, audit, cli, doctor, notify, paths, secrets, server, ssh, watch
+from conning import admin, audit, cli, doctor, notify, paths, secrets, server, ssh, state, watch
 from conning.state import Approval, Job, set_problem
 from conning.targets import load_targets
 
@@ -262,8 +262,6 @@ def test_watch_follows_events_output_and_prompts(home, monkeypatch):
     old = Job(id="old1", target="lab", command="x", started=0)
     old.save()
     old.append("already seen\n")
-    asked = []
-    monkeypatch.setattr(admin, "approve", lambda core, io, what: asked.append(what) or 0)
     a = pending()
 
     def tick(_):
@@ -277,9 +275,12 @@ def test_watch_follows_events_output_and_prompts(home, monkeypatch):
             (paths.state_dir() / "out" / "gone1.log").write_text("orphan\n")
 
     tick.done = False
+    seen = []
+    monkeypatch.setattr(admin, "approve", lambda core, io, what: seen.append((what, state.someone_watching())) or 0)
     io = FakeIO()
     assert watch.watch(None, io, ticks=2, sleep=tick) == 0
-    assert asked == [f"a:{a.id}"]  # asked once, not every tick
+    assert seen == [(f"a:{a.id}", True)]  # asked once, and the agent's read waits while this watcher is up
+    assert not state.someone_watching()
     text = io.text
     assert "already seen" not in text and "lab j:old1 | new line" in text and "exit=0" in text
     assert "lab j:new1 | ... 5 lines (conn read o:new1)" in text and f"l{watch.TAIL_LINES + 4}" in text

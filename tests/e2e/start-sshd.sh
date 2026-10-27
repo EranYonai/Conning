@@ -38,7 +38,13 @@ UsePAM no
 AllowUsers $user
 Subsystem sftp internal-sftp
 CONF
-"$(command -v sshd || echo /usr/sbin/sshd)" -f "$dir/sshd_config" -E "$dir/sshd.log"
+sshd=$(command -v sshd || echo /usr/sbin/sshd)
+# OpenSSH 9.8+ penalises a source that connects without logging in, which every host-key scan does;
+# the suite scans dozens of times from 127.0.0.1, so turn that off where sshd knows the option.
+if "$sshd" -t -f "$dir/sshd_config" -o PerSourcePenalties=no 2>/dev/null; then
+  echo "PerSourcePenalties no" >> "$dir/sshd_config"
+fi
+"$sshd" -f "$dir/sshd_config" -E "$dir/sshd.log"
 
 echo "CONNING_E2E_PORT=$port"
 echo "CONNING_E2E_USER=$user"

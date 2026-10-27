@@ -195,6 +195,10 @@ two words, or deny), and the agent picks up the result with `read a:<id>`:
 - **With `conn approve a:<id>`** in any terminal. When you run `conn run` yourself at a terminal, it
   just asks you there and prints the result.
 
+`read a:<id>` long-polls only while a `conn watch` is open. With nobody watching, it returns at once
+with `nobody is watching: ask the user to run conn approve a:<id>`, so the agent asks you instead of
+waiting out its timeout for an answer no one was asked for.
+
 Read-only commands such as `uname`, `hostname`, `df`, `ps`, `ls`, `ip addr`, `systemctl status` and
 `journalctl` run without asking on every target; each is checked so its changing forms (`hostname x`,
 `ip addr add`) still ask, and `safe = false` in a target's entry turns the list off.

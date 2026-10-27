@@ -17,12 +17,13 @@ from conning.output import DEFAULT_MAX_BYTES, clamp_max_bytes, render, render_fa
 from conning.policy import is_allowed, is_safe, policy_argv
 from conning.secrets import Redactor, SecretError, redact
 from conning.ssh import SSHError
-from conning.state import Approval, Job, new_id, problems
+from conning.state import Approval, Job, new_id, problems, someone_watching
 from conning.targets import Target, TargetFileError, listing, load_targets, select
 from conning.transport import SSHTransport, Transport
 
 POLL_CHUNK = 1 << 20
 APPROVE_HINT = "human runs: conn approve a:{id}"
+UNWATCHED_HINT = "nobody is watching: ask the user to run conn approve a:{id}, then read a:{id}"
 PENDING = re.compile(r"^status=pending_approval id=a:(\w+).*$", re.M)
 
 
@@ -176,10 +177,12 @@ class Core:
             if self.notify:
                 notify.approval_waiting(a.id, needs, shown)
             reason = "shell syntax always asks" if words is None else "not on the allowlist"
-            notes.append(
-                f"status=pending_approval id=a:{a.id} targets={','.join(needs)} ({reason}; "
+            hint = (
                 f"{APPROVE_HINT.format(id=a.id)}); then read a:{a.id}"
+                if someone_watching()
+                else f"{UNWATCHED_HINT.format(id=a.id)})"
             )
+            notes.append(f"status=pending_approval id=a:{a.id} targets={','.join(needs)} ({reason}; {hint}")
         runnable = [t for t in chosen if decisions[t.name] == "run"]
         if not runnable:
             return "\n".join(notes)
@@ -412,11 +415,12 @@ class Core:
         if a is None:
             return f"error: no approval a:{approval_id}"
         until = self.clock() + max(0, wait)
-        while a.status == "pending" and self.clock() < until:
+        while a.status == "pending" and self.clock() < until and someone_watching():  # no one to answer: don't wait
             self.sleep(1)
             a = Approval.load(approval_id) or a
         if a.status == "pending":
-            return f"status=pending_approval id=a:{a.id} ({APPROVE_HINT.format(id=a.id)})"
+            hint = APPROVE_HINT if someone_watching() else UNWATCHED_HINT
+            return f"status=pending_approval id=a:{a.id} ({hint.format(id=a.id)})"
         if a.status == "denied":
             return f"status=denied id=a:{a.id} (the human declined: {a.display})"
         if not a.jobs:

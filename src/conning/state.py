@@ -4,9 +4,11 @@ Every process (the MCP server, any `conn` CLI call) reads and writes the same fi
 by the agent over MCP can be read from a terminal, and an approval granted in a terminal reaches the agent.
 """
 
+import contextlib
 import json
 import os
 import secrets as _random
+import threading
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -144,3 +146,38 @@ def pending_approvals() -> list[Approval]:
 
 def output_logs() -> list[Path]:
     return sorted(_dir("out").glob("*.log"))
+
+
+WATCH_FRESH = 5.0  # seconds a `conn watch` heartbeat still counts as a human watching
+
+
+@contextlib.contextmanager
+def watching(interval: float = 1.0):
+    """Mark this process as a live `conn watch` until the block ends. A thread touches the heartbeat
+    file, so it stays fresh while the human sits at an approval prompt."""
+    path = _dir("watchers") / str(os.getpid())
+    path.touch()
+    stop = threading.Event()
+
+    def beat() -> None:
+        while not stop.wait(interval):
+            path.touch()
+
+    thread = threading.Thread(target=beat, daemon=True)
+    thread.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        thread.join()
+        path.unlink(missing_ok=True)
+
+
+def someone_watching() -> bool:
+    """Whether a `conn watch` is running now, so a pending approval will reach a human."""
+    now = time.time()
+    for path in _dir("watchers").iterdir():
+        with contextlib.suppress(OSError):  # a watcher that just exited
+            if now - path.stat().st_mtime < WATCH_FRESH:
+                return True
+    return False

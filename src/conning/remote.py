@@ -50,10 +50,15 @@ def posix_start(job_id: str, command: str, *, cwd: str | None, timeout: int, env
         f"{exports}"
         "if command -v setsid >/dev/null 2>&1; then group=setsid; else group=; fi\n"
         f"if command -v timeout >/dev/null 2>&1; then limit='timeout -k 10 {int(timeout)}'; else limit=; fi\n"
+        # A background job of a non-interactive sh starts with SIGINT ignored. GNU timeout happened to
+        # undo that; uutils timeout (Ubuntu 26.04) doesn't, so env restores it where env can.
+        "if env --default-signal=INT true >/dev/null 2>&1; then reset='env --default-signal=INT'; else reset=; fi\n"
         # The wrapper outlives the ssh session (nohup, no tty). The command runs in its own process
         # group, so a signal reaches its whole tree while the wrapper survives to record the exit code.
-        'nohup sh -c \'$2 $3 sh "$1.sh" > "$1.out" 2>&1 < /dev/null & echo $! > "$1.pid"; wait $!;'
-        ' echo $? > "$1.rc"\' conning "$b" "$group" "$limit" > /dev/null 2>&1 < /dev/null &\n'
+        # uutils timeout exits 124 when signalled, so a signal we sent wins over 124.
+        'nohup sh -c \'$2 $3 $4 sh "$1.sh" > "$1.out" 2>&1 < /dev/null & echo $! > "$1.pid"; wait $!; r=$?;'
+        ' [ "$r" = 124 ] && [ -s "$1.sig" ] && r=$((128 + $(cat "$1.sig")));'
+        ' echo $r > "$1.rc"\' conning "$b" "$group" "$limit" "$reset" > /dev/null 2>&1 < /dev/null &\n'
         'echo "$!"\n'
     )
 
@@ -92,9 +97,11 @@ def posix_poll(job_id: str, offset: int, limit: int) -> str:
 def posix_signal(job_id: str, signal: str) -> str:
     if signal not in ("INT", "TERM", "KILL"):
         raise ValueError(f"unsupported signal {signal!r}")
+    number = {"INT": 2, "TERM": 15, "KILL": 9}[signal]
     return (
         f"{_job_base(job_id)}\n"
         'pid=$(cat "$b.pid" 2>/dev/null) || { echo "no such job"; exit 1; }\n'
+        f'echo {number} > "$b.sig"\n'  # so the wrapper reports 128+signal, not timeout's 124
         f'kill -{signal} -- "-$pid" 2>/dev/null || kill -{signal} "$pid"\n'
     )
 

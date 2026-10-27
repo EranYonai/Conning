@@ -6,6 +6,10 @@
   while a `conn watch` is open; otherwise it returns at once with `nobody is watching: ask the user to
   run conn approve a:<id>, then read a:<id>`, and `run` says the same when it queues the command. The
   skill and the server instructions tell the agent to stop and ask.
+- Ubuntu 26.04 targets, whose `timeout` comes from uutils: stopping a job with `read signal=...` now
+  reports `exit=130`, `143` or `137` instead of `exit=124 (timed out)`, and `signal=INT` stops it at once
+  instead of being ignored until the kill-after timer fired 10 seconds later.
+- CI: the e2e sshd turns off OpenSSH 10's per-source penalties, which locked out the suite's host-key scans.
 
 ## 0.6.4 (2026-10-20)
 
